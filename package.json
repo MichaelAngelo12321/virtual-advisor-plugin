@@ -1,0 +1,25 @@
+{
+  "name": "virtual-advisor-plugin",
+  "version": "1.0.0",
+  "description": "Universal JavaScript plugin for virtual voice advisor",
+  "main": "dist/virtual-advisor.min.js",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "echo \"Tests will be added later\" && exit 0"
+  },
+  "keywords": [
+    "voice",
+    "advisor",
+    "plugin",
+    "javascript",
+    "elevenlabs",
+    "speech"
+  ],
+  "author": "Adrian Kemski",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
