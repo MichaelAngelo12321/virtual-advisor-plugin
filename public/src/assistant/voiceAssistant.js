@@ -213,18 +213,36 @@ export class VoiceAssistant {
 
   async showOffersSpinner() {
     try {
+      console.log('showOffersSpinner wywołane z sessionId:', this.sessionId);
+      
+      // Zapisz sessionId przed cleanup
+      const currentSessionId = this.sessionId;
+      
       // Wyłącz nasłuchiwanie całkowicie
       this.isActive = false;
       await this.cleanup();
       
-      // Otwórz nowe okno z ofertami
-      const offersUrl = `offers.html?sessionId=${this.sessionId}`;
-      window.open(offersUrl, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
+      // Otwórz nowe okno z ofertami używając zapisanego sessionId
+      const offersUrl = `offers.html?sessionId=${currentSessionId}`;
+      console.log('Próba otwarcia URL:', offersUrl);
+      
+      const newWindow = window.open(offersUrl, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
+      
+      if (newWindow) {
+        console.log('Nowe okno zostało otwarte pomyślnie');
+      } else {
+        console.error('Nie udało się otworzyć nowego okna - prawdopodobnie zablokowane przez przeglądarkę');
+        // Fallback - otwórz w tym samym oknie
+        window.location.href = offersUrl;
+      }
       
       // Ukryj modal głosowy
       const modal = document.getElementById('voice-modal');
       if (modal) {
+        console.log('Usuwanie modalu głosowego');
         modal.remove();
+      } else {
+        console.log('Modal głosowy nie został znaleziony');
       }
       
     } catch (error) {
