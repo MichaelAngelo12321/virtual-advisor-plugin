@@ -1,287 +1,113 @@
+import { AudioManager } from './audioManager.js';
+import { InterruptMonitor } from './interruptMonitor.js';
+import { SpeechProcessor } from './speechProcessor.js';
+import { AudioPlayer } from './audioPlayer.js';
+
 export class VoiceAssistant {
   constructor(config = {}) {
+    this.config = config;
     this.sampleDuration = config.sampleDuration || 6000;
-    this.interruptThreshold = config.interruptThreshold || 40;
-    this.fftSize = config.fftSize || 512;
-
-    this.audio = new Audio();
-    this.isSpeaking = false;
-    this.isListening = false;
-    this.isProcessing = false;
-
-    this.stream = null;
-    this.context = null;
-    this.analyser = null;
-    this.source = null;
-    this.mediaRecorder = null;
-    this.audioChunks = [];
     
-    // Dodatkowe zmienne dla monitorowania przerwań
-    this.interruptStream = null;
-    this.interruptContext = null;
+    // Inicjalizacja modułów
+    this.audioManager = new AudioManager(config);
+    this.interruptMonitor = new InterruptMonitor(config);
+    this.speechProcessor = new SpeechProcessor();
+    this.audioPlayer = new AudioPlayer();
+    
+    // Stany
+    this.isActive = false;
+    this.isListeningActive = false;
   }
 
   async init() {
+    this.isActive = true;
     await this.greetUser();
   }
 
   async greetUser() {
     const greetingMessage = "Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?";
-    // Uruchom monitorowanie przerwań już podczas powitania
-    this.startInterruptMonitoring();
     await this.speak(greetingMessage);
   }
 
-  async startInterruptMonitoring() {
-    if (this.isListening || this.interruptStream) return;
-
-    try {
-      this.interruptStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.interruptContext = new AudioContext();
-      const source = this.interruptContext.createMediaStreamSource(this.interruptStream);
-      const analyser = this.interruptContext.createAnalyser();
-      analyser.fftSize = this.fftSize;
-      source.connect(analyser);
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      const checkVolume = () => {
-        if (!this.interruptStream) return;
-        
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-        if (avg > this.interruptThreshold && this.isSpeaking) {
-          console.log("Wykryto mowę użytkownika podczas powitania — przerywam!");
-          this.audio.pause();
-          this.audio.currentTime = 0;
-          this.stopInterruptMonitoring();
-          this.isSpeaking = false;
-          this.listenLoop();
-        } else if (this.isSpeaking) {
-          requestAnimationFrame(checkVolume);
-        } else {
-          this.stopInterruptMonitoring();
-        }
-      };
-
-      checkVolume();
-    } catch (err) {
-      console.error("Błąd podczas uruchamiania monitorowania przerwań:", err);
-    }
-  }
-
-  stopInterruptMonitoring() {
-    if (this.interruptStream) {
-      this.interruptStream.getTracks().forEach(track => track.stop());
-      this.interruptStream = null;
-    }
-    if (this.interruptContext && this.interruptContext.state !== "closed") {
-      this.interruptContext.close();
-      this.interruptContext = null;
-    }
-  }
-
-  async cleanupAudio() {
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
-      this.mediaRecorder.stop();
-    }
-    if (this.stream) {
-      this.stream.getTracks().forEach(t => t.stop());
-      this.stream = null;
-    }
-    if (this.context && this.context.state !== "closed") {
-      await this.context.close();
-      this.context = null;
-    }
-    
-    // Wyczyść również zasoby monitorowania przerwań
-    this.stopInterruptMonitoring();
-    
-    this.isListening = false;
+  async cleanup() {
+    this.isActive = false;
+    this.isListeningActive = false;
+    await this.audioManager.cleanup();
+    this.interruptMonitor.cleanup();
+    this.audioPlayer.cleanup();
+    this.speechProcessor.reset();
   }
 
   async listenLoop() {
-    if (this.isSpeaking || this.isListening) return;
-    this.isListening = true;
-
-    await this.cleanupAudio();
-
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    this.context = new AudioContext();
-    this.source = this.context.createMediaStreamSource(this.stream);
-    this.analyser = this.context.createAnalyser();
-    this.analyser.fftSize = this.fftSize;
-    this.source.connect(this.analyser);
-
-    // Rozgrzewka – daj mikrofonowi moment na aktywację
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(this.stream);
-    this.mediaRecorder.ondataavailable = e => this.audioChunks.push(e.data);
-    this.mediaRecorder.onstop = () => {
-      this.isListening = false;
-      this.sendToServer();
-    };
-    this.mediaRecorder.start();
-
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    let silenceStart = null;
-    const silenceDelay = 700;
-
-    const checkSilence = () => {
-      this.analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-      if (avg < 20) {
-        if (!silenceStart) silenceStart = Date.now();
-        if (Date.now() - silenceStart > silenceDelay && this.mediaRecorder.state === "recording") {
-          console.log("Cisza wykryta – przerywam nagrywanie");
-          this.mediaRecorder.stop();
-          this.cleanupAudio();
-          return;
+    if (!this.isActive || this.isListeningActive) return;
+    
+    this.isListeningActive = true;
+    
+    try {
+      await this.audioManager.startRecording(
+        this.config.interruptThreshold || 40,
+        async (audioBlob) => {
+          // Callback wywoływany po zakończeniu nagrywania
+          this.isListeningActive = false;
+          await this.processUserInput(audioBlob);
         }
-      } else {
-        silenceStart = null;
-      }
-
-      if (this.mediaRecorder.state === "recording") {
-        requestAnimationFrame(checkSilence);
-      }
-    };
-
-    requestAnimationFrame(checkSilence);
-
-    setTimeout(() => {
-      if (this.mediaRecorder.state === "recording") {
-        console.log("Maksymalny czas minął – przerywam nagrywanie");
-        this.mediaRecorder.stop();
-        this.cleanupAudio();
-      }
-    }, this.sampleDuration);
+      );
+    } catch (err) {
+      console.error("Błąd podczas nasłuchiwania:", err);
+      this.isListeningActive = false;
+    }
   }
 
-  async sendToServer() {
-    // Zabezpieczenie przed wielokrotnym wywołaniem
-    if (this.isProcessing) return;
-    this.isProcessing = true;
-
-    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-    const formData = new FormData();
-    formData.append('audio', blob);
-
+  async processUserInput(audioBlob) {
     try {
-      const res = await fetch('/api/stt', { method: 'POST', body: formData });
-      const { transcript } = await res.json();
-      console.log("Użytkownik powiedział:", transcript);
-
-      if (!transcript || transcript.trim().length === 0) {
-        this.isProcessing = false;
-        this.listenLoop(); // nic nie powiedziano – restartuj słuchanie
-        return;
+      const userText = await this.speechProcessor.processAudio(audioBlob);
+      
+      if (userText && userText.trim()) {
+        console.log("Rozpoznany tekst:", userText);
+        const reply = await this.speechProcessor.getReply(userText);
+        console.log("Odpowiedź asystenta:", reply);
+        await this.speak(reply);
+      } else {
+        console.log("Nie rozpoznano tekstu, kontynuuję nasłuchiwanie...");
+        this.listenLoop();
       }
-
-      const replyRes = await fetch('/api/reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userText: transcript }),
-      });
-      const { reply } = await replyRes.json();
-
-      this.isProcessing = false;
-      this.speak(reply);
-    } catch (err) {
-      console.error("Błąd przetwarzania:", err);
-      this.isProcessing = false;
+    } catch (error) {
+      console.error("Błąd podczas przetwarzania:", error);
       this.listenLoop();
     }
   }
 
   async speak(text) {
-    this.isSpeaking = true;
-
-    await this.cleanupAudio();
-
     try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      this.audio.src = url;
-
-      return new Promise(resolve => {
-        this.audio.onended = () => {
-          this.isSpeaking = false;
+      const audioUrl = await this.speechProcessor.synthesizeSpeech(text);
+      
+      await this.audioPlayer.play(
+        audioUrl,
+        () => {
+          // Callback po zakończeniu odtwarzania
+          this.interruptMonitor.stop();
+          URL.revokeObjectURL(audioUrl);
           this.listenLoop();
-          resolve();
-        };
-        
-        // Właściwa obsługa promise dla audio.play()
-        const playPromise = this.audio.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            // Odtwarzanie rozpoczęte pomyślnie
-            // Uruchom monitorowanie tylko jeśli nie ma już aktywnego
-            if (!this.interruptStream) {
-              this.monitorUserInterrupt();
-            }
-          }).catch(error => {
-            console.log("Odtwarzanie przerwane:", error.message);
-            this.isSpeaking = false;
-            this.listenLoop();
-            resolve();
-          });
-        } else {
-          // Uruchom monitorowanie tylko jeśli nie ma już aktywnego
-          if (!this.interruptStream) {
-            this.monitorUserInterrupt();
-          }
+        },
+        (error) => {
+          // Callback w przypadku błędu
+          this.interruptMonitor.stop();
+          console.error("Błąd odtwarzania:", error);
+          URL.revokeObjectURL(audioUrl);
+          this.listenLoop();
         }
-      });
-    } catch (err) {
-      console.error("Błąd podczas mówienia:", err);
-      this.isSpeaking = false;
+      );
+      
+      // Uruchom monitorowanie przerwań po rozpoczęciu odtwarzania
+      this.interruptMonitor.start(() => {
+        this.audioPlayer.stop();
+        this.listenLoop();
+      }, this.audioPlayer);
+      
+    } catch (error) {
+      console.error("Błąd podczas syntezy mowy:", error);
       this.listenLoop();
     }
   }
 
-  async monitorUserInterrupt() {
-    if (this.isListening) return;
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const context = new AudioContext();
-    const source = context.createMediaStreamSource(stream);
-    const analyser = context.createAnalyser();
-    analyser.fftSize = this.fftSize;
-    source.connect(analyser);
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    const checkVolume = () => {
-      analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-      if (avg > this.interruptThreshold) {
-        console.log("Wykryto mowę użytkownika — przerywam!");
-        this.audio.pause();
-        this.audio.currentTime = 0;
-        stream.getTracks().forEach(track => track.stop());
-        context.close();
-        this.isSpeaking = false;
-        this.listenLoop();
-      } else if (!this.audio.paused) {
-        requestAnimationFrame(checkVolume);
-      } else {
-        stream.getTracks().forEach(track => track.stop());
-        context.close();
-        this.isSpeaking = false;
-        this.listenLoop();
-      }
-    };
-
-    checkVolume();
-  }
 }
