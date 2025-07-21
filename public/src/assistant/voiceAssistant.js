@@ -7,6 +7,7 @@ export class VoiceAssistant {
     this.audio = new Audio();
     this.isSpeaking = false;
     this.isListening = false;
+    this.isProcessing = false;
 
     this.stream = null;
     this.context = null;
@@ -17,7 +18,12 @@ export class VoiceAssistant {
   }
 
   async init() {
-    await this.listenLoop();
+    await this.greetUser();
+  }
+
+  async greetUser() {
+    const greetingMessage = "Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?";
+    await this.speak(greetingMessage);
   }
 
   async cleanupAudio() {
@@ -97,6 +103,10 @@ export class VoiceAssistant {
   }
 
   async sendToServer() {
+    // Zabezpieczenie przed wielokrotnym wywołaniem
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
     const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
     const formData = new FormData();
     formData.append('audio', blob);
@@ -107,6 +117,7 @@ export class VoiceAssistant {
       console.log("Użytkownik powiedział:", transcript);
 
       if (!transcript || transcript.trim().length === 0) {
+        this.isProcessing = false;
         this.listenLoop(); // nic nie powiedziano – restartuj słuchanie
         return;
       }
@@ -118,9 +129,11 @@ export class VoiceAssistant {
       });
       const { reply } = await replyRes.json();
 
+      this.isProcessing = false;
       this.speak(reply);
     } catch (err) {
       console.error("Błąd przetwarzania:", err);
+      this.isProcessing = false;
       this.listenLoop();
     }
   }
@@ -147,9 +160,22 @@ export class VoiceAssistant {
           this.listenLoop();
           resolve();
         };
-        this.audio.play();
-
-        this.monitorUserInterrupt();
+        
+        // Właściwa obsługa promise dla audio.play()
+        const playPromise = this.audio.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            // Odtwarzanie rozpoczęte pomyślnie
+            this.monitorUserInterrupt();
+          }).catch(error => {
+            console.log("Odtwarzanie przerwane:", error.message);
+            this.isSpeaking = false;
+            this.listenLoop();
+            resolve();
+          });
+        } else {
+          this.monitorUserInterrupt();
+        }
       });
     } catch (err) {
       console.error("Błąd podczas mówienia:", err);
