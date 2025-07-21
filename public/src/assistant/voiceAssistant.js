@@ -15,6 +15,10 @@ export class VoiceAssistant {
     this.source = null;
     this.mediaRecorder = null;
     this.audioChunks = [];
+    
+    // Dodatkowe zmienne dla monitorowania przerwań
+    this.interruptStream = null;
+    this.interruptContext = null;
   }
 
   async init() {
@@ -23,7 +27,58 @@ export class VoiceAssistant {
 
   async greetUser() {
     const greetingMessage = "Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?";
+    // Uruchom monitorowanie przerwań już podczas powitania
+    this.startInterruptMonitoring();
     await this.speak(greetingMessage);
+  }
+
+  async startInterruptMonitoring() {
+    if (this.isListening || this.interruptStream) return;
+
+    try {
+      this.interruptStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.interruptContext = new AudioContext();
+      const source = this.interruptContext.createMediaStreamSource(this.interruptStream);
+      const analyser = this.interruptContext.createAnalyser();
+      analyser.fftSize = this.fftSize;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const checkVolume = () => {
+        if (!this.interruptStream) return;
+        
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+        if (avg > this.interruptThreshold && this.isSpeaking) {
+          console.log("Wykryto mowę użytkownika podczas powitania — przerywam!");
+          this.audio.pause();
+          this.audio.currentTime = 0;
+          this.stopInterruptMonitoring();
+          this.isSpeaking = false;
+          this.listenLoop();
+        } else if (this.isSpeaking) {
+          requestAnimationFrame(checkVolume);
+        } else {
+          this.stopInterruptMonitoring();
+        }
+      };
+
+      checkVolume();
+    } catch (err) {
+      console.error("Błąd podczas uruchamiania monitorowania przerwań:", err);
+    }
+  }
+
+  stopInterruptMonitoring() {
+    if (this.interruptStream) {
+      this.interruptStream.getTracks().forEach(track => track.stop());
+      this.interruptStream = null;
+    }
+    if (this.interruptContext && this.interruptContext.state !== "closed") {
+      this.interruptContext.close();
+      this.interruptContext = null;
+    }
   }
 
   async cleanupAudio() {
@@ -38,6 +93,10 @@ export class VoiceAssistant {
       await this.context.close();
       this.context = null;
     }
+    
+    // Wyczyść również zasoby monitorowania przerwań
+    this.stopInterruptMonitoring();
+    
     this.isListening = false;
   }
 
@@ -166,7 +225,10 @@ export class VoiceAssistant {
         if (playPromise !== undefined) {
           playPromise.then(() => {
             // Odtwarzanie rozpoczęte pomyślnie
-            this.monitorUserInterrupt();
+            // Uruchom monitorowanie tylko jeśli nie ma już aktywnego
+            if (!this.interruptStream) {
+              this.monitorUserInterrupt();
+            }
           }).catch(error => {
             console.log("Odtwarzanie przerwane:", error.message);
             this.isSpeaking = false;
@@ -174,7 +236,10 @@ export class VoiceAssistant {
             resolve();
           });
         } else {
-          this.monitorUserInterrupt();
+          // Uruchom monitorowanie tylko jeśli nie ma już aktywnego
+          if (!this.interruptStream) {
+            this.monitorUserInterrupt();
+          }
         }
       });
     } catch (err) {
