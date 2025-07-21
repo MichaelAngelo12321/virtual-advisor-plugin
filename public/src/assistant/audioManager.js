@@ -44,7 +44,7 @@ export class AudioManager {
     this.source.connect(this.analyser);
 
     // Rozgrzewka – daj mikrofonowi moment na aktywację
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     this.audioChunks = [];
     this.mediaRecorder = new MediaRecorder(this.stream);
@@ -66,10 +66,14 @@ export class AudioManager {
   monitorVoiceActivity(threshold) {
     const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
     let silenceStart = null;
-    let isRecording = false;
+    let speechDetected = false;
     const silenceDelay = 700;
     const maxRecordingTime = this.sampleDuration || 6000;
     const recordingStartTime = Date.now();
+    
+    // Rozpocznij nagrywanie od razu
+    console.log("Rozpoczynam nagrywanie...");
+    this.mediaRecorder.start();
     
     const checkVolume = () => {
       if (!this.isListening) return;
@@ -78,17 +82,13 @@ export class AudioManager {
       const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
       
       if (avg > threshold) {
-        if (!isRecording && this.mediaRecorder && this.mediaRecorder.state === "inactive") {
-          console.log("Rozpoczynam nagrywanie...");
-          this.mediaRecorder.start();
-          isRecording = true;
-        }
+        speechDetected = true;
         silenceStart = null;
       } else {
-        if (isRecording && !silenceStart) {
+        if (speechDetected && !silenceStart) {
           silenceStart = Date.now();
         }
-        if (isRecording && silenceStart && Date.now() - silenceStart > silenceDelay) {
+        if (speechDetected && silenceStart && Date.now() - silenceStart > silenceDelay) {
           console.log("Cisza wykryta - kończę nagrywanie");
           this.stopRecording();
           return;

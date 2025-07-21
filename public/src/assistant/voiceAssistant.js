@@ -101,7 +101,11 @@ export class VoiceAssistant {
       // Uruchom monitorowanie przerwań po rozpoczęciu odtwarzania
       this.interruptMonitor.start(() => {
         this.audioPlayer.stop();
-        this.listenLoop();
+        // Dodaj krótkie opóźnienie przed rozpoczęciem nasłuchiwania
+        // aby dać użytkownikowi czas na rozpoczęcie mówienia
+        setTimeout(() => {
+          this.listenLoop();
+        }, 200);
       }, this.audioPlayer);
       
     } catch (error) {
