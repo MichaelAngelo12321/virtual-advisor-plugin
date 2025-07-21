@@ -18,6 +18,14 @@ export class VoiceAssistant {
     // Stany
     this.isActive = false;
     this.isListeningActive = false;
+    
+    // Zebrane informacje
+    this.collectedInfo = {
+      creditAmount: null,
+      collateralValue: null,
+      repaymentPeriod: null,
+      age: null
+    };
   }
 
   async init() {
@@ -55,6 +63,14 @@ export class VoiceAssistant {
     await this.audioManager.cleanup();
     this.interruptMonitor.stop();
     this.audioPlayer.stop();
+    
+    // Resetuj zebrane informacje
+    this.collectedInfo = {
+      creditAmount: null,
+      collateralValue: null,
+      repaymentPeriod: null,
+      age: null
+    };
   }
 
   async listenLoop() {
@@ -97,7 +113,12 @@ export class VoiceAssistant {
         const apiResponse = await this.speechProcessor.getReply(transcript, this.sessionId);
         console.log("Odpowiedź API:", apiResponse);
         
-        // Sprawdź czy ankieta została ukończona
+        // Aktualizuj zebrane informacje z odpowiedzi API
+    if (apiResponse.creditInformation) {
+      this.updateCollectedInfoFromAPI(apiResponse.creditInformation);
+    }
+    
+    // Sprawdź, czy ankieta została ukończona
         if (apiResponse.isCompleted) {
           console.log("Ankieta ukończona - wyświetlam oferty");
           await this.speakAndShowOffers(apiResponse.question);
@@ -215,26 +236,12 @@ export class VoiceAssistant {
     try {
       console.log('showOffersSpinner wywołane z sessionId:', this.sessionId);
       
-      // Zapisz sessionId przed cleanup
-      const currentSessionId = this.sessionId;
+      // Zachowaj sessionId przed cleanup
+      const sessionId = this.sessionId;
       
       // Wyłącz nasłuchiwanie całkowicie
       this.isActive = false;
       await this.cleanup();
-      
-      // Otwórz nowe okno z ofertami używając zapisanego sessionId
-      const offersUrl = `offers.html?sessionId=${currentSessionId}`;
-      console.log('Próba otwarcia URL:', offersUrl);
-      
-      const newWindow = window.open(offersUrl, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
-      
-      if (newWindow) {
-        console.log('Nowe okno zostało otwarte pomyślnie');
-      } else {
-        console.error('Nie udało się otworzyć nowego okna - prawdopodobnie zablokowane przez przeglądarkę');
-        // Fallback - otwórz w tym samym oknie
-        window.location.href = offersUrl;
-      }
       
       // Ukryj modal głosowy
       const modal = document.getElementById('voice-modal');
@@ -245,8 +252,80 @@ export class VoiceAssistant {
         console.log('Modal głosowy nie został znaleziony');
       }
       
+      // Przekieruj na stronę z ofertami z zachowanym sessionId
+      console.log('Przekierowanie na stronę z ofertami z sessionId:', sessionId);
+      window.location.href = `/offers.html?sessionId=${sessionId}`;
+      
     } catch (error) {
-      console.error('Błąd podczas otwierania ofert:', error);
+      console.error('Błąd podczas zamykania asystenta:', error);
+    }
+  }
+
+  updateCollectedInfoFromAPI(creditInformation) {
+    // Aktualizuj zebrane informacje na podstawie danych z API
+    if (creditInformation.creditValue && !this.collectedInfo.creditAmount) {
+      this.collectedInfo.creditAmount = this.formatAmount(creditInformation.creditValue);
+    }
+    if (creditInformation.secureValue && !this.collectedInfo.collateralValue) {
+      this.collectedInfo.collateralValue = this.formatAmount(creditInformation.secureValue);
+    }
+    if (creditInformation.creditPeriod && !this.collectedInfo.repaymentPeriod) {
+      this.collectedInfo.repaymentPeriod = `${creditInformation.creditPeriod} lat`;
+    }
+    if (creditInformation.creditClientAge && !this.collectedInfo.age) {
+      this.collectedInfo.age = `${creditInformation.creditClientAge} lat`;
+    }
+    
+    // Aktualizuj wyświetlanie
+    this.updateModalDisplay();
+  }
+
+  formatAmount(amount) {
+    return new Intl.NumberFormat('pl-PL', {
+      style: 'currency',
+      currency: 'PLN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  }
+
+
+
+  updateModalDisplay() {
+    // Aktualizuj kwotę kredytu
+    const creditValueEl = document.getElementById('credit-value');
+    if (creditValueEl) {
+      creditValueEl.textContent = this.collectedInfo.creditAmount || '-';
+      if (this.collectedInfo.creditAmount) {
+        creditValueEl.classList.add('filled');
+      }
+    }
+    
+    // Aktualizuj wartość zabezpieczenia
+    const secureValueEl = document.getElementById('secure-value');
+    if (secureValueEl) {
+      secureValueEl.textContent = this.collectedInfo.collateralValue || '-';
+      if (this.collectedInfo.collateralValue) {
+        secureValueEl.classList.add('filled');
+      }
+    }
+    
+    // Aktualizuj okres spłaty
+    const creditPeriodEl = document.getElementById('credit-period');
+    if (creditPeriodEl) {
+      creditPeriodEl.textContent = this.collectedInfo.repaymentPeriod || '-';
+      if (this.collectedInfo.repaymentPeriod) {
+        creditPeriodEl.classList.add('filled');
+      }
+    }
+    
+    // Aktualizuj wiek
+    const creditClientAgeEl = document.getElementById('credit-client-age');
+    if (creditClientAgeEl) {
+      creditClientAgeEl.textContent = this.collectedInfo.age || '-';
+      if (this.collectedInfo.age) {
+        creditClientAgeEl.classList.add('filled');
+      }
     }
   }
 }

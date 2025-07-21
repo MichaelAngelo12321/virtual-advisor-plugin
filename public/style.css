@@ -33,5 +33,54 @@ body {
 }
 
 .modal-content {
-  font-size: 2rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+}
+
+.conversation-status {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.collected-info h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.info-grid {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border-left: 4px solid #5c67f2;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.info-value {
+  font-weight: bold;
+  color: #fff;
+  min-width: 60px;
+  text-align: right;
+}
+
+.info-value.filled {
+  color: #68d391;
 }

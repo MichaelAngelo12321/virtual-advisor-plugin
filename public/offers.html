@@ -243,7 +243,7 @@
         <h4 class="offers-title">Znalezione oferty kredytowe (<span id="offers-count">0</span>)</h4>
         <p class="offers-subtitle">Poniżej przedstawiamy najlepsze oferty dopasowane do Twoich potrzeb:</p>
       </div>
-      <button class="close-button" onclick="window.close()">Zamknij</button>
+      <button class="close-button" onclick="goToHomePage()">Zamknij</button>
     </div>
     <div id="offers-list" class="offers-list">
       <!-- Oferty będą wstawione tutaj przez JavaScript -->
@@ -259,6 +259,15 @@
   </div>
   
   <script>
+    // Funkcja do powrotu na stronę główną
+    function goToHomePage() {
+      // Wyczyść sessionId z localStorage jeśli istnieje
+      localStorage.removeItem('sessionId');
+      
+      // Przekieruj na stronę główną
+      window.location.href = '/';
+    }
+    
     // Funkcje do zarządzania widokami
     function showSpinner() {
       document.getElementById('spinner').style.display = 'block';

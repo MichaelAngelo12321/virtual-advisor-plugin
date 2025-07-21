@@ -80,7 +80,8 @@ app.post('/api/chat/answer', async (req, res) => {
       questionNumber: data.questionNumber,
       totalQuestions: data.totalQuestions,
       isCompleted: data.isCompleted,
-      createdAt: data.createdAt
+      createdAt: data.createdAt,
+      creditInformation: data.creditInformation || null
     });
   } catch (error) {
     console.error('Error connecting to chat API:', error);
