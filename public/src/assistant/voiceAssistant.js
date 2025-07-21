@@ -6,7 +6,8 @@ import { AudioPlayer } from './audioPlayer.js';
 export class VoiceAssistant {
   constructor(config = {}) {
     this.config = config;
-    this.sampleDuration = config.sampleDuration || 6000;
+    this.sampleDuration = config.sampleDuration || 15000;
+    this.sessionId = null; // Przechowywanie sessionId z API
     
     // Inicjalizacja modułów
     this.audioManager = new AudioManager(config);
@@ -25,17 +26,35 @@ export class VoiceAssistant {
   }
 
   async greetUser() {
-    const greetingMessage = "Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?";
-    await this.speak(greetingMessage);
+    try {
+      const response = await fetch('http://localhost:8001/api/chat/start.json');
+      const data = await response.json();
+      
+      if (response.ok && data.sessionId) {
+        // Zapisz sessionId do późniejszego użycia
+        this.sessionId = data.sessionId;
+        console.log('Chat session started:', data.sessionId);
+        // Użyj message z API
+        await this.speak(data.message);
+      } else {
+        console.error('API error or missing sessionId:', data);
+        // Fallback do hardkodowanej wiadomości
+        await this.speak("Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?");
+      }
+    } catch (error) {
+      console.error('Error starting chat session:', error);
+      // Fallback do hardkodowanej wiadomości
+      await this.speak("Cześć! Jestem twoim asystentem głosowym. W czym mogę ci pomóc?");
+    }
   }
 
   async cleanup() {
     this.isActive = false;
     this.isListeningActive = false;
+    this.sessionId = null;
     await this.audioManager.cleanup();
-    this.interruptMonitor.cleanup();
-    this.audioPlayer.cleanup();
-    this.speechProcessor.reset();
+    this.interruptMonitor.stop();
+    this.audioPlayer.stop();
   }
 
   async listenLoop() {
@@ -60,13 +79,32 @@ export class VoiceAssistant {
 
   async processUserInput(audioBlob) {
     try {
-      const userText = await this.speechProcessor.processAudio(audioBlob);
+      // STT - rozpoznawanie mowy
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      const sttResponse = await fetch('/api/stt', { method: 'POST', body: formData });
+      const { transcript } = await sttResponse.json();
       
-      if (userText && userText.trim()) {
-        console.log("Rozpoznany tekst:", userText);
-        const reply = await this.speechProcessor.getReply(userText);
-        console.log("Odpowiedź asystenta:", reply);
-        await this.speak(reply);
+      if (transcript && transcript.trim()) {
+        console.log("Rozpoznany tekst:", transcript);
+        
+        if (!this.sessionId) {
+          console.error("Brak sessionId - nie można wysłać odpowiedzi do API");
+          await this.speak("Przepraszam, wystąpił błąd z sesją. Spróbuj ponownie.");
+          return;
+        }
+        
+        const apiResponse = await this.speechProcessor.getReply(transcript, this.sessionId);
+        console.log("Odpowiedź API:", apiResponse);
+        
+        // Sprawdź czy ankieta została ukończona
+        if (apiResponse.isCompleted) {
+          console.log("Ankieta ukończona - wyświetlam oferty");
+          await this.speakAndShowOffers(apiResponse.question);
+          return;
+        }
+        
+        await this.speak(apiResponse.question);
       } else {
         console.log("Nie rozpoznano tekstu, kontynuuję nasłuchiwanie...");
         this.listenLoop();
@@ -79,7 +117,19 @@ export class VoiceAssistant {
 
   async speak(text) {
     try {
-      const audioUrl = await this.speechProcessor.synthesizeSpeech(text);
+      // TTS - synteza mowy
+      const ttsResponse = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      
+      if (!ttsResponse.ok) {
+        throw new Error(`TTS error! status: ${ttsResponse.status}`);
+      }
+      
+      const audioBlob = await ttsResponse.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
       
       await this.audioPlayer.play(
         audioUrl,
@@ -114,4 +164,71 @@ export class VoiceAssistant {
     }
   }
 
+  async speakAndShowOffers(text) {
+    try {
+      // TTS - synteza mowy
+      const ttsResponse = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      
+      if (!ttsResponse.ok) {
+        throw new Error(`TTS error! status: ${ttsResponse.status}`);
+      }
+      
+      const audioBlob = await ttsResponse.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      await this.audioPlayer.play(
+        audioUrl,
+        () => {
+          // Callback po zakończeniu odtwarzania - wyświetl oferty
+          this.interruptMonitor.stop();
+          URL.revokeObjectURL(audioUrl);
+          this.showOffersSpinner();
+        },
+        (error) => {
+          // Callback w przypadku błędu - wyświetl oferty mimo błędu
+          this.interruptMonitor.stop();
+          console.error("Błąd odtwarzania:", error);
+          URL.revokeObjectURL(audioUrl);
+          this.showOffersSpinner();
+        }
+      );
+      
+      // Uruchom monitorowanie przerwań po rozpoczęciu odtwarzania
+      this.interruptMonitor.start(() => {
+        this.audioPlayer.stop();
+        // Jeśli użytkownik przerwał, od razu wyświetl oferty
+        this.showOffersSpinner();
+      }, this.audioPlayer);
+      
+    } catch (error) {
+      console.error("Błąd podczas syntezy mowy:", error);
+      // W przypadku błędu, wyświetl oferty
+      this.showOffersSpinner();
+    }
+  }
+
+  async showOffersSpinner() {
+    try {
+      // Wyłącz nasłuchiwanie całkowicie
+      this.isActive = false;
+      await this.cleanup();
+      
+      // Otwórz nowe okno z ofertami
+      const offersUrl = `offers.html?sessionId=${this.sessionId}`;
+      window.open(offersUrl, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
+      
+      // Ukryj modal głosowy
+      const modal = document.getElementById('voice-modal');
+      if (modal) {
+        modal.remove();
+      }
+      
+    } catch (error) {
+      console.error('Błąd podczas otwierania ofert:', error);
+    }
+  }
 }

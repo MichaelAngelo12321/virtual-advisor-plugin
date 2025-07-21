@@ -1,5 +1,5 @@
 export const assistantConfig = {
-  sampleDuration: 6000,
-  interruptThreshold: 25,
+  sampleDuration: 15000,
+  interruptThreshold: 40,
   fftSize: 512
 };

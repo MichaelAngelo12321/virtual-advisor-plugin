@@ -3,57 +3,28 @@ export class SpeechProcessor {
     this.isProcessing = false;
   }
 
-  async processAudio(audioBlob, onTranscript, onReply) {
-    // Zabezpieczenie przed wielokrotnym wywołaniem
-    if (this.isProcessing) return;
-    this.isProcessing = true;
+  // Metoda processAudio została usunięta - używamy teraz bezpośrednio endpointów w voiceAssistant.js
 
-    const formData = new FormData();
-    formData.append('audio', audioBlob);
-
-    try {
-      const res = await fetch('/api/stt', { method: 'POST', body: formData });
-      const { transcript } = await res.json();
-      console.log("Użytkownik powiedział:", transcript);
-
-      if (onTranscript) onTranscript(transcript);
-
-      if (!transcript || transcript.trim().length === 0) {
-        this.isProcessing = false;
-        return null;
-      }
-
-      const replyRes = await fetch('/api/reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userText: transcript }),
-      });
-      const { reply } = await replyRes.json();
-
-      this.isProcessing = false;
-      
-      if (onReply) onReply(reply);
-      return reply;
-    } catch (err) {
-      console.error("Błąd przetwarzania:", err);
-      this.isProcessing = false;
-      throw err;
+  async getReply(userText, sessionId) {
+    if (!sessionId) {
+      throw new Error('SessionId is required for chat API');
     }
-  }
-
-  async getReply(userText) {
-    const response = await fetch('/api/reply', {
+    
+    const response = await fetch('http://localhost:8001/api/chat/answer.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: userText })
+      body: JSON.stringify({ 
+        sessionId: sessionId,
+        answer: userText 
+      })
     });
     
     if (!response.ok) {
-      throw new Error(`Reply error! status: ${response.status}`);
+      throw new Error(`Chat API error! status: ${response.status}`);
     }
     
     const data = await response.json();
-    return data.reply;
+    return data; // Zwracamy pełne dane z API
   }
 
   async synthesizeSpeech(text) {
