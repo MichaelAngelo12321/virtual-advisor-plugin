@@ -241,7 +241,6 @@ export class VoiceAssistant {
       
       // Wyłącz nasłuchiwanie całkowicie
       this.isActive = false;
-      await this.cleanup();
       
       // Ukryj modal głosowy
       const modal = document.getElementById('voice-modal');
