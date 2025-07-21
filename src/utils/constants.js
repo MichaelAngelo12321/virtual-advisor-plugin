@@ -31,7 +31,8 @@ export const DEFAULT_CONFIG = {
   // Ustawienia nagrywania
   recording: {
     maxDuration: 30000, // 30 sekund
-    silenceTimeout: 2000, // 2 sekundy ciszy
+    silenceTimeout: 3000, // 3 sekundy ciszy przed automatycznym zatrzymaniem
+    activityThreshold: 20000, // Minimalna wielkość chunka audio do uznania za aktywność (w bajtach) - wyższy próg = mniej czuły
     sampleRate: 16000,
     channels: 1
   },

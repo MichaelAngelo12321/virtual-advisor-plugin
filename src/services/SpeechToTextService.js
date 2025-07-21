@@ -19,6 +19,7 @@ export class SpeechToTextService extends EventEmitter {
       interimResults: true,
       maxAlternatives: 1,
       silenceTimeout: 3000, // 3 sekundy ciszy przed automatycznym zatrzymaniem
+      activityThreshold: 20000, // Minimalna wielkość chunka audio do uznania za aktywność
       ...config
     };
     
@@ -45,6 +46,10 @@ export class SpeechToTextService extends EventEmitter {
       // Sprawdź uprawnienia mikrofonu
       await this.checkMicrophonePermissions();
       
+      // Ustaw próg aktywności w OpenAISpeechService
+      if (this.config.activityThreshold) {
+        this.openAiSpeechService.setActivityThreshold(this.config.activityThreshold);
+      }
   
       return true;
       
@@ -108,10 +113,13 @@ export class SpeechToTextService extends EventEmitter {
       
       console.log('SpeechToTextService: Rozpoczynam nagrywanie...');
       
-      // Ustaw callback aktywności audio
+      // Ustaw callback aktywności audio z dodatkową logiką
       this.openAiSpeechService.setActivityCallback(() => {
-        console.log('SpeechToTextService: Wykryto aktywność audio');
+        console.log('SpeechToTextService: Wykryto aktywność audio - resetuję timer ciszy');
         this.resetSilenceTimer();
+        
+        // Emit event o wykryciu aktywności dla UI
+        this.events.emit('activity:detected');
       });
       
       // Rozpocznij nagrywanie
@@ -246,6 +254,7 @@ export class SpeechToTextService extends EventEmitter {
    */
   startSilenceTimer() {
     this.lastActivityTime = Date.now();
+    console.log(`SpeechToTextService: Uruchomiono timer ciszy (timeout: ${this.config.silenceTimeout}ms)`);
     
     if (this.silenceTimer) {
       clearInterval(this.silenceTimer);
@@ -258,6 +267,7 @@ export class SpeechToTextService extends EventEmitter {
       }
       
       const timeSinceLastActivity = Date.now() - this.lastActivityTime;
+      console.log(`SpeechToTextService: Sprawdzam timer ciszy - czas od ostatniej aktywności: ${timeSinceLastActivity}ms (próg: ${this.config.silenceTimeout}ms)`);
       
       if (timeSinceLastActivity >= this.config.silenceTimeout) {
         console.log('SpeechToTextService: Timeout ciszy - zatrzymuję nasłuchiwanie');
@@ -285,7 +295,9 @@ export class SpeechToTextService extends EventEmitter {
    */
   resetSilenceTimer() {
     if (this.isListening) {
+      const oldTime = this.lastActivityTime;
       this.lastActivityTime = Date.now();
+      console.log(`SpeechToTextService: Resetuję timer ciszy (poprzedni czas: ${oldTime}, nowy czas: ${this.lastActivityTime})`);
     }
   }
 
@@ -316,7 +328,30 @@ export class SpeechToTextService extends EventEmitter {
    */
   setConfig(config) {
     this.config = { ...this.config, ...config };
-
+    
+    // Jeśli zmieniono ustawienia audio, przekaż je do OpenAI service
+    if (config.activityThreshold && this.openAiSpeechService) {
+      this.openAiSpeechService.setActivityThreshold(config.activityThreshold);
+    }
+  }
+  
+  /**
+   * Ustawia timeout ciszy (czas po którym automatycznie zatrzymuje nagrywanie)
+   */
+  setSilenceTimeout(timeout) {
+    this.config.silenceTimeout = timeout;
+    console.log(`SpeechToTextService: Ustawiono timeout ciszy na ${timeout}ms`);
+  }
+  
+  /**
+   * Ustawia próg aktywności audio (minimalna wielkość chunka do uznania za aktywność)
+   */
+  setActivityThreshold(threshold) {
+    this.config.activityThreshold = threshold;
+    if (this.openAiSpeechService) {
+      this.openAiSpeechService.setActivityThreshold(threshold);
+    }
+    console.log(`SpeechToTextService: Ustawiono próg aktywności na ${threshold} bajtów`);
   }
 
   /**

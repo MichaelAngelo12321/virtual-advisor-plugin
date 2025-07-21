@@ -25,6 +25,7 @@ export class OpenAISpeechService {
     this.audioChunks = [];
     this.isRecording = false;
     this.activityCallback = null;
+    this.activityThreshold = 20000; // Domyślny próg aktywności w bajtach - wyższy próg dla mniejszej czułości na szumy tła
   }
 
   /**
@@ -255,7 +256,9 @@ export class OpenAISpeechService {
           this.audioChunks.push(event.data);
           
           // Powiadom o aktywności audio tylko dla większych chunków (resetuj timer ciszy)
-          if (event.data.size > 500 && this.activityCallback) {
+          // Używaj konfigurowalnego progu aktywności aby zmniejszyć czułość na szumy tła
+          if (event.data.size > this.activityThreshold && this.activityCallback) {
+            console.log(`OpenAI: Wykryto aktywność audio (${event.data.size} bajtów, próg: ${this.activityThreshold})`);
             this.activityCallback();
           }
         }
@@ -397,5 +400,14 @@ export class OpenAISpeechService {
    */
   isConfigured() {
     return !!this.apiKey;
+  }
+  
+  /**
+   * Ustawia próg aktywności audio
+   * @param {number} threshold - Próg w bajtach
+   */
+  setActivityThreshold(threshold) {
+    this.activityThreshold = threshold;
+    console.log(`OpenAI: Ustawiono próg aktywności na ${threshold} bajtów`);
   }
 }

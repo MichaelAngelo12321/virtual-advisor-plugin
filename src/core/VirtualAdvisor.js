@@ -249,7 +249,9 @@ export class VirtualAdvisor {
     this.speechService = new SpeechToTextService(
       this.config.openAiApiKey,
       {
-        language: this.config.language || 'pl'
+        language: this.config.language || 'pl',
+        silenceTimeout: this.config.recording?.silenceTimeout || 3000,
+        activityThreshold: this.config.recording?.activityThreshold || 20000
       }
     );
     await this.speechService.init();
@@ -393,6 +395,43 @@ export class VirtualAdvisor {
       this.stopListening();
     }
   }
+
+  /**
+   * Publiczne API - ustawia timeout ciszy (czas po którym automatycznie zatrzymuje nagrywanie)
+   * @param {number} timeout - Czas w milisekundach (np. 3000 = 3 sekundy)
+   */
+  setSilenceTimeout(timeout) {
+    if (this.speechService) {
+      this.speechService.setSilenceTimeout(timeout);
+    }
+    // Zaktualizuj też w konfiguracji
+    if (!this.config.recording) this.config.recording = {};
+    this.config.recording.silenceTimeout = timeout;
+  }
+  
+  /**
+   * Publiczne API - ustawia próg aktywności mikrofonu (czułość na dźwięki)
+   * @param {number} threshold - Próg w bajtach (np. 1000 = mniej czuły, 2000 = jeszcze mniej czuły)
+   */
+  setMicrophoneSensitivity(threshold) {
+    if (this.speechService) {
+      this.speechService.setActivityThreshold(threshold);
+    }
+    // Zaktualizuj też w konfiguracji
+    if (!this.config.recording) this.config.recording = {};
+    this.config.recording.activityThreshold = threshold;
+  }
+  
+  /**
+   * Publiczne API - pobiera aktualne ustawienia nagrywania
+   */
+  getRecordingSettings() {
+     return {
+       silenceTimeout: this.config.recording?.silenceTimeout || 3000,
+       activityThreshold: this.config.recording?.activityThreshold || 20000,
+       isListening: this.speechService?.getIsListening() || false
+     };
+   }
 
   /**
    * Publiczne API - pokazuje/ukrywa plugin
