@@ -130,6 +130,15 @@ export class Modal {
       this.updateState(newState);
     });
 
+    // Obsługa wiadomości w transkrypcji
+    this.events.on('message:user', (message) => {
+      this.addTranscriptMessage('user', message);
+    });
+
+    this.events.on('message:assistant', (message) => {
+      this.addTranscriptMessage('assistant', message);
+    });
+
     // Escape key
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isVisible) {

@@ -25,6 +25,7 @@ export const DEFAULT_CONFIG = {
   // Klucze API
   apiUrl: '',
   elevenLabsKey: 'sk_072b349dcc92f48edd4349098b02dcdfd321192d2d1479f7',
+  openAiApiKey: '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',
   voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam voice ID
   
   // Ustawienia nagrywania

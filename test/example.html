@@ -5,143 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Advisor Plugin - Test</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 40px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: white;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 40px;
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
-            font-weight: 300;
-        }
-        .description {
-            text-align: center;
-            margin-bottom: 40px;
-            font-size: 1.2em;
-            opacity: 0.9;
-        }
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-        button {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-        button:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-        button:active {
-            transform: translateY(0);
-        }
-        .log {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 30px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .log-entry {
-            margin-bottom: 8px;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-        .log-entry.info {
-            background: rgba(59, 130, 246, 0.2);
-        }
-        .log-entry.warning {
-            background: rgba(245, 158, 11, 0.2);
-        }
-        .log-entry.error {
-            background: rgba(239, 68, 68, 0.2);
-        }
-        .status {
-            text-align: center;
-            margin: 20px 0;
-            padding: 16px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 500;
-        }
-        .status.idle {
-            background: rgba(107, 114, 128, 0.2);
-        }
-        .status.listening {
-            background: rgba(239, 68, 68, 0.2);
-        }
-        .status.processing {
-            background: rgba(245, 158, 11, 0.2);
-        }
-        .status.speaking {
-            background: rgba(16, 185, 129, 0.2);
-        }
-        .status.error {
-            background: rgba(239, 68, 68, 0.2);
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            opacity: 0.7;
-            font-size: 14px;
-        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎤 Virtual Advisor Plugin</h1>
-        
-        <div class="description">
-            Test środowiska dla wtyczki wirtualnego doradcy.<br>
-            Kliknij przycisk w prawym dolnym rogu aby rozpocząć rozmowę.
-        </div>
-
-        <div class="status idle" id="status">
-            Stan: Gotowy
-        </div>
-
-        <div class="controls">
-            <button onclick="startConversation()">Rozpocznij rozmowę</button>
-            <button onclick="stopConversation()">Zatrzymaj rozmowę</button>
-            <button onclick="togglePlugin()">Pokaż/Ukryj</button>
-            <button onclick="clearLog()">Wyczyść log</button>
-        </div>
-
-        <div class="log" id="log">
-            <div class="log-entry info">Plugin jest gotowy do testowania...</div>
-        </div>
-
-        <div class="footer">
-            Virtual Advisor Plugin v1.0.0
-        </div>
-    </div>
 
     <script type="module">
         import { VirtualAdvisor } from '../src/index.js';
@@ -151,10 +17,10 @@
         let isPluginVisible = true;
 
         // Initialize plugin when page loads
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             try {
                 advisor = new VirtualAdvisor({
-                    apiUrl: 'https://backend.aikredyty.pl/api', // Endpoint API
+                    apiUrl: 'http://localhost:8001/api', // Endpoint API
                     position: 'bottom-right',
                     ui: {
                         theme: 'light',
@@ -162,111 +28,34 @@
                         showVisualizer: true
                     }
                 });
-
-                // Bind events
-                advisor.on('initialized', () => {
-                    log('Plugin zainicjalizowany pomyślnie', 'info');
-                });
-
-                advisor.on('stateChange', (newState, oldState) => {
-                    log(`Stan zmieniony: ${oldState} → ${newState}`, 'info');
-                    updateStatus(newState);
-                });
-
-                advisor.on('listeningStart', () => {
-                    log('Rozpoczęto nasłuch', 'info');
-                });
-
-                advisor.on('listeningStop', () => {
-                    log('Zatrzymano nasłuch', 'info');
-                });
-
-                advisor.on('processingStart', () => {
-                    log('Rozpoczęto przetwarzanie', 'info');
-                });
-
-                advisor.on('processingComplete', () => {
-                    log('Zakończono przetwarzanie', 'info');
-                });
-
-                advisor.on('speakingStart', () => {
-                    log('Rozpoczęto odtwarzanie odpowiedzi', 'info');
-                });
-
-                advisor.on('speakingComplete', () => {
-                    log('Zakończono odtwarzanie odpowiedzi', 'info');
-                });
-
-                advisor.on('error', (error) => {
-                    log(`Błąd: ${error.message || error}`, 'error');
-                });
-
-                log('Plugin VirtualAdvisor został załadowany', 'info');
+                
+                // Sprawdź uprawnienia mikrofonu
+                console.log('Sprawdzanie uprawnień mikrofonu...');
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    console.log('✅ Mikrofon dostępny');
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (error) {
+                    console.error('❌ Błąd mikrofonu:', error);
+                    alert('Błąd: Brak dostępu do mikrofonu. Sprawdź ustawienia przeglądarki.');
+                }
+                
+                // Sprawdź czy MediaRecorder jest obsługiwany
+                if (!window.MediaRecorder) {
+                    console.error('❌ MediaRecorder nie jest obsługiwany');
+                    alert('Błąd: Przeglądarka nie obsługuje nagrywania audio.');
+                } else {
+                    console.log('✅ MediaRecorder obsługiwany');
+                }
+                
+                console.log('Plugin zainicjalizowany');
                 
             } catch (error) {
-                log(`Błąd inicjalizacji: ${error.message}`, 'error');
+                console.error('Błąd inicjalizacji:', error);
+                alert('Błąd inicjalizacji: ' + error.message);
             }
         });
 
-        // Helper functions
-        function log(message, type = 'info') {
-            const logElement = document.getElementById('log');
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logElement.appendChild(entry);
-            logElement.scrollTop = logElement.scrollHeight;
-        }
-
-        function updateStatus(state) {
-            const statusElement = document.getElementById('status');
-            const statusTexts = {
-                idle: 'Gotowy',
-                listening: 'Słucham...',
-                processing: 'Przetwarzam...',
-                speaking: 'Odpowiadam...',
-                error: 'Błąd'
-            };
-
-            statusElement.textContent = `Stan: ${statusTexts[state] || state}`;
-            statusElement.className = `status ${state}`;
-        }
-
-        function startConversation() {
-            if (advisor) {
-                advisor.startConversation();
-                log('Rozmowa rozpoczęta programowo', 'info');
-            }
-        }
-
-        function stopConversation() {
-            if (advisor) {
-                advisor.stopConversation();
-                log('Rozmowa zatrzymana programowo', 'info');
-            }
-        }
-
-        function togglePlugin() {
-            if (advisor) {
-                isPluginVisible = !isPluginVisible;
-                advisor.toggle(isPluginVisible);
-                log(`Plugin ${isPluginVisible ? 'pokazany' : 'ukryty'}`, 'info');
-            }
-        }
-
-        function clearLog() {
-            document.getElementById('log').innerHTML = '';
-            log('Log wyczyszczony', 'info');
-        }
-
-        // Error handling
-        window.addEventListener('error', (e) => {
-            log(`Błąd JavaScript: ${e.message}`, 'error');
-        });
-
-        window.addEventListener('unhandledrejection', (e) => {
-            log(`Nieobsłużony Promise: ${e.reason}`, 'error');
-        });
     </script>
 </body>
 </html>

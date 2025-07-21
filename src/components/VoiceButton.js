@@ -100,7 +100,7 @@ export class VoiceButton {
     this.element.addEventListener('touchstart', (e) => {
       e.preventDefault();
       this.handleClick();
-    });
+    }, { passive: false });
   }
 
   /**
