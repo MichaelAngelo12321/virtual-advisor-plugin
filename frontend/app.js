@@ -183,9 +183,21 @@ class App {
                     )
                 );
                 
+                // Pokaż oferty gdy currentState=offer_presentation i availableActions zawiera display
+                const shouldShowOffers = (
+                    backendData.currentState === 'offer_presentation' &&
+                    (
+                        (Array.isArray(backendData.availableActions) && backendData.availableActions.includes('display')) ||
+                        (typeof backendData.availableActions === 'string' && backendData.availableActions === 'display')
+                    )
+                );
+                
                 if (shouldShowEmailForm) {
                     console.log('Showing email form');
                     this.ui.showEmailForm();
+                } else if (shouldShowOffers) {
+                    console.log('Showing mortgage offers');
+                    this.handleShowOffers();
                 } else {
                     console.log('Email form conditions not met:', {
                         currentState: backendData.currentState,
@@ -213,6 +225,7 @@ class App {
             
             // Ukryj formularz po 3 sekundach
             setTimeout(() => {
+                this.ui.hideEmailForm();
             }, 3000);
             
         } catch (error) {
@@ -220,6 +233,21 @@ class App {
             this.ui.showEmailStatus('❌ Błąd połączenia z serwerem', false);
         } finally {
             this.ui.setEmailButtonLoading(false);
+        }
+    }
+
+    async handleShowOffers() {
+        try {
+            console.log('Fetching mortgage offers...');
+            const offersData = await this.session.getMortgageOffers();
+            console.log('Offers data received:', offersData);
+            
+            // Wyświetl modal z ofertami
+            this.ui.showOffersModal(offersData);
+            
+        } catch (error) {
+            console.error('Error fetching offers:', error);
+            this.ui.showError('Błąd podczas pobierania ofert: ' + error.message);
         }
     }
 

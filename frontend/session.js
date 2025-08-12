@@ -174,4 +174,26 @@ export class SessionManager {
             throw new Error('Failed to send offers email: ' + error.message);
         }
     }
+
+    // Pobierz oferty kredytowe
+    async getMortgageOffers() {
+        try {
+            const response = await fetch(`http://localhost:8001/api/chat/mortgage-offers/${this.sessionId}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Backend error: ${response.status}`);
+            }
+            
+            const backendData = await response.json();
+            return backendData;
+        } catch (error) {
+            throw new Error('Failed to get mortgage offers: ' + error.message);
+        }
+    }
 }
