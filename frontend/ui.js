@@ -130,6 +130,67 @@ export class UIManager {
         this.elements.transcriptContainer.scrollTop = this.elements.transcriptContainer.scrollHeight;
     }
 
+    // Credit information display
+    displayCreditInformation(creditInfo) {
+        // Helper function to safely format currency
+        const formatCurrency = (value) => {
+            return value !== null && value !== undefined ? value.toLocaleString('pl-PL') + ' zł' : 'Brak danych';
+        };
+        
+        // Helper function to safely format period
+        const formatPeriod = (period) => {
+            if (period === null || period === undefined) {
+                return 'Brak danych';
+            }
+            
+            const years = Math.floor(period / 12);
+            const months = period % 12;
+            
+            if (years > 0 && months > 0) {
+                return `${years} ${years === 1 ? 'rok' : years < 5 ? 'lata' : 'lat'} i ${months} ${months === 1 ? 'miesiąc' : months < 5 ? 'miesiące' : 'miesięcy'}`;
+            } else if (years > 0) {
+                return `${years} ${years === 1 ? 'rok' : years < 5 ? 'lata' : 'lat'}`;
+            } else {
+                return `${months} ${months === 1 ? 'miesiąc' : months < 5 ? 'miesiące' : 'miesięcy'}`;
+            }
+        };
+        
+        // Helper function to safely format age
+        const formatAge = (age) => {
+            return age !== null && age !== undefined ? age + ' lat' : 'Brak danych';
+        };
+
+        const item = document.createElement('div');
+        item.className = 'transcript-item credit-info';
+        
+        const timestamp = new Date().toLocaleTimeString();
+        item.innerHTML = `
+            <span class="timestamp">${timestamp}</span>
+            <span class="speaker credit">Dane Kredytowe</span>
+            <div class="credit-details">
+                <div class="credit-row">
+                    <span class="credit-label">Kwota kredytu:</span>
+                    <span class="credit-value">${formatCurrency(creditInfo.creditValue)}</span>
+                </div>
+                <div class="credit-row">
+                    <span class="credit-label">Wartość zabezpieczenia:</span>
+                    <span class="credit-value">${formatCurrency(creditInfo.secureValue)}</span>
+                </div>
+                <div class="credit-row">
+                    <span class="credit-label">Okres kredytowania:</span>
+                    <span class="credit-value">${formatPeriod(creditInfo.creditPeriod)}</span>
+                </div>
+                <div class="credit-row">
+                    <span class="credit-label">Wiek klienta:</span>
+                    <span class="credit-value">${formatAge(creditInfo.creditClientAge)}</span>
+                </div>
+            </div>
+        `;
+
+        this.elements.transcriptContainer.appendChild(item);
+        this.elements.transcriptContainer.scrollTop = this.elements.transcriptContainer.scrollHeight;
+    }
+
     // Error management
     showError(message) {
         this.elements.errorMessage.textContent = message;

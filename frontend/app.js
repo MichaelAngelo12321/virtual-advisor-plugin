@@ -112,11 +112,22 @@ class App {
             // Wyślij odpowiedź użytkownika do backendu
             const backendData = await this.session.sendUserAnswer(userText);
             
-            // Dodaj odpowiedź asystenta do transkrypcji
-            this.ui.addTranscript('assistant', backendData.question);
-            
-            // Wyślij question do TTS
-            this.session.requestTTS(backendData.question);
+            // Sprawdź czy odpowiedź zawiera dane kredytowe
+            if (backendData.creditInformation) {
+                // Wyświetl dane kredytowe zamiast standardowej transkrypcji
+                this.ui.displayCreditInformation(backendData.creditInformation);
+                
+                // Wyślij question do TTS (jeśli istnieje)
+                if (backendData.question) {
+                    this.session.requestTTS(backendData.question);
+                }
+            } else {
+                // Fallback: standardowa transkrypcja jeśli brak danych kredytowych
+                if (backendData.question) {
+                    this.ui.addTranscript('assistant', backendData.question);
+                    this.session.requestTTS(backendData.question);
+                }
+            }
             
             // Opcjonalnie: obsługa dodatkowych pól z odpowiedzi
             if (backendData.isCompleted) {
