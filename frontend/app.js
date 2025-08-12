@@ -410,6 +410,12 @@ class App {
     }
 
     async init() {
+        // Przywróć sessionId z localStorage jeśli istnieje
+        const savedSessionId = localStorage.getItem('sessionId');
+        if (savedSessionId) {
+            this.sessionId = savedSessionId;
+        }
+        
         this.playback.init();
         await this.mic.init();
         this.ui.micStatus.textContent = 'Ready';
@@ -445,12 +451,45 @@ class App {
 
     async start() {
         try {
-            this.ws.send(JSON.stringify({ type: 'start-session' }));
+            // Pobierz dane startowe z backendu
+            const response = await fetch('http://localhost:8001/api/chat/start', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Backend error: ${response.status}`);
+            }
+            
+            const backendData = await response.json();
+            
+            // Zapisz sessionId z backendu
+            this.sessionId = backendData.sessionId;
+            localStorage.setItem('sessionId', this.sessionId);
+            
+            // Uruchom sesję WebSocket z sessionId z backendu
+            this.ws.send(JSON.stringify({ 
+                type: 'start-session',
+                sessionId: this.sessionId 
+            }));
             this.mic.startStreaming();
             this.ui.sessionStatus.textContent = 'Active';
             this.ui.sessionStatus.classList.remove('inactive');
             this.ui.sessionStatus.classList.add('active');
-            this.addTranscript('system', 'Session started. Speak to the assistant.');
+            
+            // Dodaj wiadomość powitalną do transkrypcji
+            this.addTranscript('assistant', backendData.message);
+            
+            // Wyślij wiadomość powitalną do TTS
+            this.ws.send(JSON.stringify({ 
+                type: 'tts-request', 
+                text: backendData.message,
+                sessionId: this.sessionId
+            }));
+            
         } catch (error) {
             this.showError('Failed to start session: ' + error.message);
         }
@@ -494,7 +533,7 @@ class App {
             const message = JSON.parse(event.data);
             switch (message.type) {
                 case 'session-started':
-                    this.sessionId = message.sessionId;
+                    // sessionId już ustawiony z backendu API - nie nadpisujemy
                     this.ui.startBtn.disabled = true;
                     break;
                 case 'session-stopped':

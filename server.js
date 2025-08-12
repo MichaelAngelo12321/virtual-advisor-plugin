@@ -37,7 +37,7 @@ const wss = new WebSocket.Server({ port: WS_PORT });
 
 class VoiceSession {
     constructor(ws) {
-        this.id = uuidv4();
+        this.id = null; // Will be set when session starts
         this.ws = ws;
         this.isActive = false;
         this.isSpeaking = false;
@@ -51,7 +51,7 @@ class VoiceSession {
         // Setup event handlers
         this.setupEventHandlers();
         
-        console.log(`New voice session created: ${this.id}`);
+        console.log(`New voice session created (waiting for sessionId)`);
     }
 
     setupEventHandlers() {
@@ -147,7 +147,11 @@ class VoiceSession {
         }
     }
 
-    startSession() {
+    startSession(sessionId = null) {
+        if (sessionId) {
+            this.id = sessionId;
+            console.log(`Voice session started with sessionId: ${this.id}`);
+        }
         this.isActive = true;
         this.sttClient.startStreaming();
         this.sendToClient('session-started', { sessionId: this.id });
@@ -213,7 +217,7 @@ wss.on('connection', (ws) => {
             
             switch (message.type) {
                 case 'start-session':
-                    session.startSession();
+                    session.startSession(message.sessionId);
                     break;
                     
                 case 'stop-session':
@@ -232,6 +236,12 @@ wss.on('connection', (ws) => {
                 case 'user-stopped-speaking':
                     session.isSpeaking = false;
                     session.sendToClient('user-speaking', { speaking: false });
+                    break;
+                    
+                case 'tts-request':
+                    if (message.text) {
+                        session.generateTtsResponse(message.text);
+                    }
                     break;
                     
                 default:
