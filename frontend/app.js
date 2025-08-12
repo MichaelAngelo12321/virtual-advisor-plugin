@@ -12,6 +12,7 @@ class App {
         this.ui = new UIManager();
         this.playback = new PlaybackController();
         this.plugins = new PluginManagerClient();
+        this.isListeningBlocked = false; // Flaga blokady nasłuchiwania
         
         // Setup mic streamer
         this.mic = new MicrophoneStreamer({
@@ -130,8 +131,16 @@ class App {
             }
             
             // Opcjonalnie: obsługa dodatkowych pól z odpowiedzi
-            if (backendData.isCompleted) {
-                console.log('Conversation completed');
+            if (backendData.isCompleted !== undefined) {
+                if (backendData.isCompleted) {
+                    console.log('Conversation completed - blocking listening');
+                    this.isListeningBlocked = true;
+                    this.mic.stopStreaming();
+                } else {
+                    console.log('Conversation not completed - unblocking listening');
+                    this.isListeningBlocked = false;
+                    this.mic.startStreaming();
+                }
             }
             
             if (backendData.shouldEndConversation) {
@@ -156,12 +165,24 @@ class App {
     }
 
     onVadStart() {
+        // Sprawdź czy nasłuchiwanie nie jest zablokowane
+        if (this.isListeningBlocked) {
+            console.log('Listening is blocked - ignoring VAD start');
+            return;
+        }
+        
         // Stop TTS immediately on user speech detection
         this.session.stopTTS();
         this.plugins.emit('onUserStartedSpeaking');
     }
 
     onVadStop() {
+        // Sprawdź czy nasłuchiwanie nie jest zablokowane
+        if (this.isListeningBlocked) {
+            console.log('Listening is blocked - ignoring VAD stop');
+            return;
+        }
+        
         this.session.userStoppedSpeaking();
     }
 
