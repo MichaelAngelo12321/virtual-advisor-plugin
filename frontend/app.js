@@ -135,7 +135,11 @@ class App {
             }
             
             if (backendData.shouldEndConversation) {
-                console.log('Should end conversation');
+                console.log('Should end conversation - closing modal and stopping session');
+                // Zamknij modal i zakończ sesję
+                this.ui.hideModal();
+                this.stop();
+                return; // Zakończ wykonywanie metody
             }
             
             if (backendData.currentState) {
