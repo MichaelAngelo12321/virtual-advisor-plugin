@@ -91,3 +91,19 @@
     <script type="module" src="app.js"></script>
 </body>
 </html>
+
+<!-- Modal ofert kredytowych (domyślnie ukryty) -->
+<div id="offers-modal" class="offers-modal" style="display: none;">
+    <div class="offers-modal-content">
+        <div class="offers-header">
+            <div>
+                <h4 class="offers-title">Znalezione oferty kredytowe (<span id="offers-count">0</span>)</h4>
+                <p class="offers-subtitle">Poniżej przedstawiamy najlepsze oferty dopasowane do Twoich potrzeb:</p>
+            </div>
+            <button class="close-button" id="close-offers-modal">✕</button>
+        </div>
+        <div id="offers-list" class="offers-list">
+            <!-- Oferty będą wstawione tutaj przez JavaScript -->
+        </div>
+    </div>
+</div>
