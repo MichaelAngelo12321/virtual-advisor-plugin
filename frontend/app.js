@@ -36,25 +36,38 @@ class MicrophoneStreamer {
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 2048;
             
-            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+            // Use AudioWorkletNode for better performance (when available)
+            if (this.audioContext.audioWorklet) {
+                try {
+                    await this.audioContext.audioWorklet.addModule('data:text/javascript;base64,' + btoa(`
+                        class AudioProcessor extends AudioWorkletProcessor {
+                            process(inputs, outputs, parameters) {
+                                const input = inputs[0];
+                                if (input.length > 0) {
+                                    this.port.postMessage(input[0]);
+                                }
+                                return true;
+                            }
+                        }
+                        registerProcessor('audio-processor', AudioProcessor);
+                    `));
+                    
+                    this.processor = new AudioWorkletNode(this.audioContext, 'audio-processor');
+                    this.processor.port.onmessage = (event) => {
+                        const inputBuffer = event.data;
+                        this.processAudioData(inputBuffer);
+                    };
+                } catch (e) {
+                    console.warn('AudioWorklet not supported, falling back to ScriptProcessor');
+                    this.setupScriptProcessor();
+                }
+            } else {
+                this.setupScriptProcessor();
+            }
+            
             this.source.connect(this.analyser);
             this.analyser.connect(this.processor);
             this.processor.connect(this.audioContext.destination);
-            
-            this.processor.onaudioprocess = (event) => {
-                const inputBuffer = event.inputBuffer.getChannelData(0);
-                const pcm16 = this.downsampleBuffer(inputBuffer, this.audioContext.sampleRate, this.sampleRate);
-                
-                if (pcm16) {
-                    this.audioDataQueue.push(pcm16);
-                    if (this.onAudioChunk && this.isStreaming) {
-                        this.onAudioChunk(pcm16);
-                    }
-                }
-                
-                this.updateVisualizer(inputBuffer);
-                this.checkVad(inputBuffer);
-            };
             
             this.startVisualizer();
             return true;
@@ -62,6 +75,28 @@ class MicrophoneStreamer {
             console.error('Microphone init error:', error);
             throw error;
         }
+    }
+
+    setupScriptProcessor() {
+        this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+        this.processor.onaudioprocess = (event) => {
+            const inputBuffer = event.inputBuffer.getChannelData(0);
+            this.processAudioData(inputBuffer);
+        };
+    }
+
+    processAudioData(inputBuffer) {
+        const pcm16 = this.downsampleBuffer(inputBuffer, this.audioContext.sampleRate, this.sampleRate);
+        
+        if (pcm16) {
+            this.audioDataQueue.push(pcm16);
+            if (this.onAudioChunk && this.isStreaming) {
+                this.onAudioChunk(pcm16);
+            }
+        }
+        
+        this.updateVisualizer(inputBuffer);
+        this.checkVad(inputBuffer);
     }
 
     startStreaming() {
@@ -242,13 +277,28 @@ class PlaybackController {
         });
     }
 
-    playChunk(audioBuffer) {
+    async playChunk(audioBuffer) {
         // For simplicity, we fallback to creating Blob and appending to audio element
         const blob = new Blob([audioBuffer], { type: this.mimeType });
         const url = URL.createObjectURL(blob);
+        
+        // Stop current playback before setting new source
+        if (this.isPlaying) {
+            this.audioEl.pause();
+            this.audioEl.currentTime = 0;
+        }
+        
         this.audioEl.src = url;
-        this.audioEl.play();
-        this.isPlaying = true;
+        
+        try {
+            await this.audioEl.play();
+            this.isPlaying = true;
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Error playing audio chunk:', error);
+            }
+            // AbortError is expected when play() is interrupted by a new load
+        }
     }
 
     stop() {
@@ -343,7 +393,7 @@ class App {
 
     connectWs() {
         const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-        this.wsUrl = `${protocol}://${location.hostname}:${3001}`; // WS runs on separate port
+        this.wsUrl = `${protocol}://${location.hostname}:3006`; // WS runs on separate port
         this.ws = new WebSocket(this.wsUrl);
 
         this.ws.onopen = () => {
@@ -461,7 +511,11 @@ class App {
                         byteNumbers[i] = byteCharacters.charCodeAt(i);
                     }
                     const byteArray = new Uint8Array(byteNumbers);
-                    this.playback.playChunk(byteArray);
+                    this.playback.playChunk(byteArray).catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.error('Error in TTS playback:', error);
+                        }
+                    });
                     this.addTranscript('assistant', '[Playing audio chunk...]');
                     break;
                 case 'user-speaking':

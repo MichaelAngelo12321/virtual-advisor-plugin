@@ -73,7 +73,7 @@ class VoiceSession {
 
         // TTS events
         this.ttsClient.on('audioChunk', (audioData) => {
-            this.sendToClient('tts-chunk', { audio: audioData });
+            this.sendToClient('tts-chunk', { audio: { data: audioData.toString('base64') } });
         });
 
         this.ttsClient.on('ttsStart', () => {
@@ -122,7 +122,7 @@ class VoiceSession {
 
     async processUserInput(text) {
         // Simple echo response for demo - replace with your AI/logic
-        const response = `Słyszałem: "${text}". Czy mogę w czymś pomóc?`;
+        const response = "Cześć co u Ciebie słychać miło mi Cię poznać jestem twoim Fanem";
         
         try {
             await this.generateTtsResponse(response);

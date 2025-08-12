@@ -20,7 +20,7 @@ class SttClient extends EventEmitter {
         
         this.request = {
             config: {
-                encoding: 'WEBM_OPUS', // Matches browser WebM encoding
+                encoding: 'LINEAR16', // More reliable format
                 sampleRateHertz: this.sampleRate,
                 languageCode: this.languageCode,
                 enableAutomaticPunctuation: true,
