@@ -393,7 +393,7 @@ class App {
 
     connectWs() {
         const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-        this.wsUrl = `${protocol}://${location.hostname}:3006`; // WS runs on separate port
+        this.wsUrl = `${protocol}://${location.hostname}:3001`; // WS runs on separate port
         this.ws = new WebSocket(this.wsUrl);
 
         this.ws.onopen = () => {

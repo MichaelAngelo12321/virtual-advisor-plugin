@@ -5,12 +5,14 @@ Aplikacja voice-first z real-time STT (Google Cloud Speech) i TTS (ElevenLabs) z
 ## 🚀 Funkcje
 
 - **Real-time Speech-to-Text** - Google Cloud Speech z interim results
-- **Real-time Text-to-Speech** - ElevenLabs streaming audio
+- **Real-time Text-to-Speech** - ElevenLabs streaming audio z poprawkami obcinania słów
 - **Voice Activity Detection** - Automatyczne wykrywanie mowy użytkownika
 - **Inteligentne przerywanie** - TTS zatrzymuje się gdy użytkownik zaczyna mówić
 - **System pluginów** - Hooki dla zewnętrznych rozszerzeń
-- **WebSocket streaming** - Niska latencja komunikacji
+- **WebSocket streaming** - Niska latencja komunikacji na jednym porcie
 - **Cross-browser support** - Działa w Chrome, Firefox, Safari, Edge
+- **Ngrok support** - Automatyczne wykrywanie i konfiguracja dla ngrok
+- **Yarn support** - Nowoczesny menedżer pakietów
 
 ## 📋 Wymagania
 
@@ -25,7 +27,7 @@ Aplikacja voice-first z real-time STT (Google Cloud Speech) i TTS (ElevenLabs) z
 ### 1. Zainstaluj dependencies
 
 ```bash
-npm install
+yarn install
 ```
 
 ### 2. Konfiguracja Google Cloud
@@ -54,7 +56,6 @@ Edytuj `.env`:
 ```env
 # Google Cloud Speech-to-Text
 GOOGLE_APPLICATION_CREDENTIALS=./backend/config/service-account-key.json
-GOOGLE_CLOUD_PROJECT_ID=twoj-project-id
 
 # ElevenLabs TTS
 ELEVENLABS_API_KEY=twoj-elevenlabs-api-key
@@ -62,7 +63,7 @@ ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
 
 # Server Configuration
 PORT=3000
-WS_PORT=3001
+WS_PORT=3006
 NODE_ENV=development
 
 # Audio Configuration
@@ -75,13 +76,13 @@ CHUNK_SIZE=1024
 ### Tryb rozwojowy (development)
 
 ```bash
-npm run dev
+yarn dev
 ```
 
 ### Tryb produkcyjny
 
 ```bash
-npm start
+yarn start
 ```
 
 Aplikacja będzie dostępna pod adresem: **http://localhost:3000**
@@ -215,16 +216,139 @@ pluginManager.register({
 
 ### Problemy z WebSocket
 
-- Sprawdź czy port 3001 jest dostępny
+- WebSocket działa na tym samym porcie co HTTP (3000) przez endpoint `/ws`
 - Dla produkcji użyj wss:// zamiast ws://
 - Sprawdź firewall i proxy settings
+- Aplikacja automatycznie wykrywa środowisko ngrok i dostosowuje konfigurację
 
 ## 🚀 Deployment
+
+### Przygotowanie dystrybucji (dist)
+
+Aby przygotować aplikację do dystrybucji:
+
+1. **Zainstaluj narzędzia do budowania:**
+   ```bash
+   yarn add --dev webpack webpack-cli html-webpack-plugin css-loader style-loader terser-webpack-plugin
+   ```
+
+2. **Utwórz plik `webpack.config.js`:**
+   ```javascript
+   const path = require('path');
+   const HtmlWebpackPlugin = require('html-webpack-plugin');
+   const TerserPlugin = require('terser-webpack-plugin');
+   
+   module.exports = {
+     mode: 'production',
+     entry: './frontend/app.js',
+     output: {
+       path: path.resolve(__dirname, 'dist'),
+       filename: 'bundle.[contenthash].js',
+       clean: true
+     },
+     module: {
+       rules: [
+         {
+           test: /\.css$/i,
+           use: ['style-loader', 'css-loader']
+         }
+       ]
+     },
+     plugins: [
+       new HtmlWebpackPlugin({
+         template: './frontend/index.html',
+         minify: true
+       })
+     ],
+     optimization: {
+       minimize: true,
+       minimizer: [new TerserPlugin()]
+     }
+   };
+   ```
+
+3. **Dodaj skrypty do `package.json`:**
+   ```json
+   {
+     "scripts": {
+       "build": "webpack",
+       "build:watch": "webpack --watch",
+       "serve:dist": "NODE_ENV=production node server.js"
+     }
+   }
+   ```
+
+4. **Zbuduj dystrybucję:**
+   ```bash
+   yarn build
+   ```
+
+5. **Uruchom z dystrybucji:**
+   ```bash
+   yarn serve:dist
+   ```
+
+### Alternatywna metoda - prosta dystrybucja
+
+Jeśli nie chcesz używać webpack, możesz przygotować prostą dystrybucję:
+
+1. **Zainstaluj narzędzia minifikacji:**
+   ```bash
+   yarn add --dev terser clean-css-cli html-minifier-terser
+   ```
+
+2. **Dodaj skrypty do `package.json`:**
+   ```json
+   {
+     "scripts": {
+       "build:simple": "mkdir -p dist && cp -r backend dist/ && cp server.js dist/ && cp package.json dist/ && cp .env.example dist/",
+       "build:minify": "terser frontend/app.js -o dist/frontend/app.min.js && cleancss frontend/styles.css -o dist/frontend/styles.min.css && html-minifier-terser --collapse-whitespace --remove-comments frontend/index.html -o dist/frontend/index.html",
+       "build:dist": "yarn build:simple && mkdir -p dist/frontend && yarn build:minify"
+     }
+   }
+   ```
+
+3. **Zbuduj dystrybucję:**
+   ```bash
+   yarn build:dist
+   ```
+
+4. **Zaktualizuj ścieżki w `dist/frontend/index.html`:**
+   - Zmień `app.js` na `app.min.js`
+   - Zmień `styles.css` na `styles.min.css`
+
+### Struktura dystrybucji
+
+Po zbudowaniu, folder `dist/` będzie zawierał:
+
+```
+dist/
+├── backend/
+│   ├── config/
+│   ├── plugins.js
+│   ├── stt.js
+│   └── tts.js
+├── frontend/
+│   ├── index.html (zminifikowany)
+│   ├── app.min.js (zminifikowany)
+│   └── styles.min.css (zminifikowany)
+├── server.js
+├── package.json
+└── .env.example
+```
+
+### Najlepsze praktyki dla produkcji
+
+- **Zmienne środowiskowe:** Skopiuj `.env.example` do `.env` w folderze `dist/`
+- **HTTPS:** Użyj reverse proxy (nginx) dla HTTPS w produkcji
+- **Process Manager:** Użyj PM2 lub podobnego do zarządzania procesem
+- **Monitoring:** Dodaj logi i monitoring błędów
+- **Backup:** Regularnie twórz kopie zapasowe konfiguracji
 
 ### Lokalna produkcja
 
 ```bash
-NODE_ENV=production npm start
+NODE_ENV=production yarn start
 ```
 
 ### Docker (opcjonalne)
@@ -232,11 +356,11 @@ NODE_ENV=production npm start
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production
 COPY . .
 EXPOSE 3000 3001
-CMD ["npm", "start"]
+CMD ["yarn", "start"]
 ```
 
 ### Zmienne produkcyjne
@@ -246,6 +370,27 @@ NODE_ENV=production
 PORT=3000
 WS_PORT=3001
 ```
+
+### Konfiguracja ngrok
+
+Aplikacja automatycznie wykrywa środowisko ngrok i dostosowuje konfigurację WebSocket:
+
+1. **Uruchom aplikację lokalnie:**
+   ```bash
+   yarn start
+   ```
+
+2. **W nowym terminalu uruchom ngrok:**
+   ```bash
+   ngrok http 3000
+   ```
+
+3. **Otwórz URL ngrok w przeglądarce**
+
+Aplikacja automatycznie:
+- Wykrywa hostname zawierający 'ngrok'
+- Konfiguruje WebSocket na `wss://your-ngrok-url.ngrok-free.app/ws`
+- Dla localhost używa `ws://localhost:3000/ws`
 
 ## 📚 API Reference
 
@@ -307,8 +452,9 @@ CHUNK_SIZE=1024          # Rozmiar chunk audio
 
 ### ElevenLabs Settings
 
-- **Model**: `eleven_turbo_v2` (najniższa latencja)
+- **Model**: `eleven_turbo_v2_5` (najniższa latencja, poprawiona jakość)
 - **Voice Settings**: stability=0.5, similarity_boost=0.75
+- **Streaming**: Optymalizacja dla real-time z poprawkami obcinania słów
 
 ## 📄 Licencja
 
