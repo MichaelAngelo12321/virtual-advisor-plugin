@@ -19,7 +19,12 @@ export class UIManager {
             dismissErrorBtn: document.getElementById('dismiss-error'),
             // Elementy modala
             modal: document.getElementById('voice-modal'),
-            closeModalBtn: document.getElementById('close-modal')
+            closeModalBtn: document.getElementById('close-modal'),
+            // Elementy formularza email
+            emailFormPanel: document.getElementById('email-form-panel'),
+            emailInput: document.getElementById('email-input'),
+            sendEmailBtn: document.getElementById('send-email-btn'),
+            emailStatus: document.getElementById('email-status')
         };
     }
 
@@ -40,6 +45,17 @@ export class UIManager {
                 this.hideModal();
                 // Emit custom event for app to handle
                 document.dispatchEvent(new CustomEvent('ui:stop-session'));
+            }
+        });
+        
+        // Event listener dla przycisku wysyłania email
+        this.elements.sendEmailBtn.addEventListener('click', () => {
+            const email = this.getEmailValue();
+            if (email) {
+                // Emit custom event for app to handle
+                document.dispatchEvent(new CustomEvent('ui:send-email', { detail: { email } }));
+            } else {
+                this.showEmailStatus('Proszę wprowadzić poprawny adres email', false);
             }
         });
     }
@@ -200,5 +216,35 @@ export class UIManager {
     hideError() {
         this.elements.errorPanel.classList.add('hidden');
         this.elements.errorMessage.textContent = '';
+    }
+
+    // Email form management
+    showEmailForm() {
+        this.elements.emailFormPanel.classList.remove('hidden');
+        this.elements.emailInput.value = '';
+        this.hideEmailStatus();
+    }
+
+    hideEmailForm() {
+        this.elements.emailFormPanel.classList.add('hidden');
+    }
+
+    showEmailStatus(message, isSuccess = true) {
+        this.elements.emailStatus.textContent = message;
+        this.elements.emailStatus.classList.remove('hidden', 'success', 'error');
+        this.elements.emailStatus.classList.add(isSuccess ? 'success' : 'error');
+    }
+
+    hideEmailStatus() {
+        this.elements.emailStatus.classList.add('hidden');
+    }
+
+    getEmailValue() {
+        return this.elements.emailInput.value.trim();
+    }
+
+    setEmailButtonLoading(loading) {
+        this.elements.sendEmailBtn.disabled = loading;
+        this.elements.sendEmailBtn.textContent = loading ? 'Wysyłanie...' : 'Wyślij oferty';
     }
 }

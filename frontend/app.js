@@ -43,6 +43,10 @@ class App {
         
         // Listen for UI events
         document.addEventListener('ui:stop-session', () => this.stop());
+        
+        document.addEventListener('ui:send-email', (event) => {
+            this.handleSendEmail(event.detail.email);
+        });
     }
 
     async init() {
@@ -166,10 +170,56 @@ class App {
             
             if (backendData.availableActions) {
                 console.log('Available actions:', backendData.availableActions);
+                console.log('Current state:', backendData.currentState);
+                console.log('Is array?', Array.isArray(backendData.availableActions));
+                console.log('Includes email?', backendData.availableActions.includes('email'));
+                
+                // Pokaż formularz email gdy currentState=waiting_for_email i availableActions zawiera email
+                const shouldShowEmailForm = (
+                    backendData.currentState === 'waiting_for_email' &&
+                    (
+                        (Array.isArray(backendData.availableActions) && backendData.availableActions.includes('email')) ||
+                        (typeof backendData.availableActions === 'string' && backendData.availableActions === 'email')
+                    )
+                );
+                
+                if (shouldShowEmailForm) {
+                    console.log('Showing email form');
+                    this.ui.showEmailForm();
+                } else {
+                    console.log('Email form conditions not met:', {
+                        currentState: backendData.currentState,
+                        expectedState: 'waiting_for_email',
+                        availableActions: backendData.availableActions,
+                        isArray: Array.isArray(backendData.availableActions),
+                        includesEmail: backendData.availableActions ? backendData.availableActions.includes('email') : false
+                    });
+                }
             }
             
         } catch (error) {
             this.ui.showError(error.message);
+        }
+    }
+
+    async handleSendEmail(email) {
+        try {
+            this.ui.setEmailButtonLoading(true);
+            this.ui.hideEmailStatus();
+            
+            const result = await this.session.sendOffersEmail(email, 'Oto Twoje oferty kredytowe');
+            this.ui.showEmailStatus('✅ Oferty zostały wysłane na podany adres email!', true);
+            console.log('Email sent successfully:', result);
+            
+            // Ukryj formularz po 3 sekundach
+            setTimeout(() => {
+            }, 3000);
+            
+        } catch (error) {
+            console.error('Error sending email:', error);
+            this.ui.showEmailStatus('❌ Błąd połączenia z serwerem', false);
+        } finally {
+            this.ui.setEmailButtonLoading(false);
         }
     }
 

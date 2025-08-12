@@ -141,4 +141,37 @@ export class SessionManager {
     userStoppedSpeaking() {
         this.sendWebSocketMessage({ type: 'user-stopped-speaking' });
     }
+
+    // Wyślij oferty na email
+    async sendOffersEmail(email, message) {
+        try {
+            const response = await fetch('http://localhost:8001/api/chat/send-offers-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    sessionId: this.sessionId,
+                    email: email,
+                    message: message
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Backend error: ${response.status}`);
+            }
+            
+            // Sprawdź czy odpowiedź ma zawartość (204 No Content nie ma body)
+            if (response.status === 204) {
+                return { success: true, message: 'Email sent successfully' };
+            }
+            
+            const backendData = await response.json();
+            return backendData;
+        } catch (error) {
+            throw new Error('Failed to send offers email: ' + error.message);
+        }
+    }
 }
