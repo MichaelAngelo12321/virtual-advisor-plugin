@@ -1,349 +1,22 @@
-// Virtual Advisor Frontend - Voice-first client
+// Virtual Advisor Frontend - Voice-first client (Refactored)
 
-class MicrophoneStreamer {
-    constructor({ wsUrl, onAudioChunk, onVadStart, onVadStop, vadThreshold = 0.02 }) {
-        this.wsUrl = wsUrl;
-        this.onAudioChunk = onAudioChunk;
-        this.onVadStart = onVadStart;
-        this.onVadStop = onVadStop;
-        this.vadThreshold = vadThreshold; // Simple RMS threshold
-        
-        this.mediaStream = null;
-        this.audioContext = null;
-        this.processor = null;
-        this.source = null;
-        this.analyser = null;
-        this.vadActive = false;
-        
-        this.sampleRate = 16000; // Target sample rate for STT
-        this.downsampleBuffer = this.downsampleBuffer.bind(this);
-        this.visualize = this.visualize.bind(this);
-        this.vadCheckInterval = null;
-        this.audioDataQueue = [];
-        this.isStreaming = false;
-        
-        // UI elements for visualization
-        this.canvas = document.getElementById('voice-canvas');
-        this.canvasCtx = this.canvas.getContext('2d');
-        this.volumeBar = document.getElementById('volume-bar');
-    }
-
-    async init() {
-        try {
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-            this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 2048;
-            
-            // Use AudioWorkletNode for better performance (when available)
-            if (this.audioContext.audioWorklet) {
-                try {
-                    await this.audioContext.audioWorklet.addModule('data:text/javascript;base64,' + btoa(`
-                        class AudioProcessor extends AudioWorkletProcessor {
-                            process(inputs, outputs, parameters) {
-                                const input = inputs[0];
-                                if (input.length > 0) {
-                                    this.port.postMessage(input[0]);
-                                }
-                                return true;
-                            }
-                        }
-                        registerProcessor('audio-processor', AudioProcessor);
-                    `));
-                    
-                    this.processor = new AudioWorkletNode(this.audioContext, 'audio-processor');
-                    this.processor.port.onmessage = (event) => {
-                        const inputBuffer = event.data;
-                        this.processAudioData(inputBuffer);
-                    };
-                } catch (e) {
-                    console.warn('AudioWorklet not supported, falling back to ScriptProcessor');
-                    this.setupScriptProcessor();
-                }
-            } else {
-                this.setupScriptProcessor();
-            }
-            
-            this.source.connect(this.analyser);
-            this.analyser.connect(this.processor);
-            this.processor.connect(this.audioContext.destination);
-            
-            this.startVisualizer();
-            return true;
-        } catch (error) {
-            console.error('Microphone init error:', error);
-            throw error;
-        }
-    }
-
-    setupScriptProcessor() {
-        this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-        this.processor.onaudioprocess = (event) => {
-            const inputBuffer = event.inputBuffer.getChannelData(0);
-            this.processAudioData(inputBuffer);
-        };
-    }
-
-    processAudioData(inputBuffer) {
-        const pcm16 = this.downsampleBuffer(inputBuffer, this.audioContext.sampleRate, this.sampleRate);
-        
-        if (pcm16) {
-            this.audioDataQueue.push(pcm16);
-            if (this.onAudioChunk && this.isStreaming) {
-                this.onAudioChunk(pcm16);
-            }
-        }
-        
-        this.updateVisualizer(inputBuffer);
-        this.checkVad(inputBuffer);
-    }
-
-    startStreaming() {
-        this.isStreaming = true;
-    }
-
-    stopStreaming() {
-        this.isStreaming = false;
-    }
-
-    stop() {
-        this.stopStreaming();
-        if (this.processor) {
-            this.processor.disconnect();
-            this.processor = null;
-        }
-        if (this.analyser) {
-            this.analyser.disconnect();
-            this.analyser = null;
-        }
-        if (this.source) {
-            this.source.disconnect();
-            this.source = null;
-        }
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
-        if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
-        }
-        this.vadActive = false;
-    }
-
-    downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
-        if (outputSampleRate === inputSampleRate) {
-            return this.floatTo16BitPCM(buffer);
-        }
-        if (outputSampleRate > inputSampleRate) {
-            console.warn('Downsampling to a higher sample rate is not supported');
-            return null;
-        }
-        const sampleRateRatio = inputSampleRate / outputSampleRate;
-        const newLength = Math.round(buffer.length / sampleRateRatio);
-        const result = new Float32Array(newLength);
-        let offsetResult = 0;
-        let offsetBuffer = 0;
-        while (offsetResult < result.length) {
-            const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-            let accum = 0, count = 0;
-            for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-                accum += buffer[i];
-                count++;
-            }
-            result[offsetResult] = accum / count;
-            offsetResult++;
-            offsetBuffer = nextOffsetBuffer;
-        }
-        return this.floatTo16BitPCM(result);
-    }
-
-    floatTo16BitPCM(float32Array) {
-        const buffer = new ArrayBuffer(float32Array.length * 2);
-        const view = new DataView(buffer);
-        let offset = 0;
-        for (let i = 0; i < float32Array.length; i++, offset += 2) {
-            let s = Math.max(-1, Math.min(1, float32Array[i]));
-            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-        }
-        return new Uint8Array(buffer);
-    }
-
-    startVisualizer() {
-        if (!this.canvasCtx) return;
-        this.canvasCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.visualize();
-    }
-
-    visualize() {
-        if (!this.analyser || !this.canvasCtx) return;
-
-        requestAnimationFrame(this.visualize);
-
-        const bufferLength = this.analyser.fftSize;
-        const dataArray = new Uint8Array(bufferLength);
-        this.analyser.getByteTimeDomainData(dataArray);
-
-        this.canvasCtx.fillStyle = '#f8f9fa';
-        this.canvasCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-		
-        this.canvasCtx.lineWidth = 2;
-        this.canvasCtx.strokeStyle = '#007bff';
-        
-        this.canvasCtx.beginPath();
-
-        const sliceWidth = this.canvas.width * 1.0 / bufferLength;
-        let x = 0;
-
-        for (let i = 0; i < bufferLength; i++) {
-            const v = dataArray[i] / 128.0;
-            const y = v * this.canvas.height / 2;
-
-            if (i === 0) {
-                this.canvasCtx.moveTo(x, y);
-            } else {
-                this.canvasCtx.lineTo(x, y);
-            }
-
-            x += sliceWidth;
-        }
-
-        this.canvasCtx.lineTo(this.canvas.width, this.canvas.height / 2);
-        this.canvasCtx.stroke();
-    }
-
-    updateVisualizer(inputBuffer) {
-        // Calculate simple RMS for volume bar
-        let sum = 0;
-        for (let i = 0; i < inputBuffer.length; i++) {
-            sum += inputBuffer[i] * inputBuffer[i];
-        }
-        const rms = Math.sqrt(sum / inputBuffer.length);
-        const volumePercent = Math.min(100, Math.max(0, Math.round(rms * 200)));
-        this.volumeBar.style.width = `${volumePercent}%`;
-    }
-
-    checkVad(inputBuffer) {
-        // Simple VAD based on RMS threshold
-        let sum = 0;
-        for (let i = 0; i < inputBuffer.length; i++) {
-            sum += inputBuffer[i] * inputBuffer[i];
-        }
-        const rms = Math.sqrt(sum / inputBuffer.length);
-        const speaking = rms > this.vadThreshold;
-
-        if (speaking && !this.vadActive) {
-            this.vadActive = true;
-            this.onVadStart && this.onVadStart();
-        } else if (!speaking && this.vadActive) {
-            this.vadActive = false;
-            this.onVadStop && this.onVadStop();
-        }
-    }
-}
-
-class PlaybackController {
-    constructor() {
-        this.audioEl = document.getElementById('tts-audio');
-        this.mediaSource = null;
-        this.sourceBuffer = null;
-        this.queue = [];
-        this.isPlaying = false;
-        this.mimeType = 'audio/mpeg'; // ElevenLabs typically returns MP3
-    }
-
-    init() {
-        if ('MediaSource' in window) {
-            this.mediaSource = new MediaSource();
-            this.audioEl.src = URL.createObjectURL(this.mediaSource);
-            this.mediaSource.addEventListener('sourceopen', this.onSourceOpen.bind(this));
-        } else {
-            console.warn('MediaSource API not supported, falling back to simple audio playback');
-        }
-    }
-
-    onSourceOpen() {
-        if (!MediaSource.isTypeSupported(this.mimeType)) {
-            console.warn(`MIME type ${this.mimeType} not supported, trying audio/wav`);
-            this.mimeType = 'audio/wav';
-        }
-        this.sourceBuffer = this.mediaSource.addSourceBuffer(this.mimeType);
-        this.sourceBuffer.addEventListener('updateend', () => {
-            if (this.queue.length > 0 && !this.sourceBuffer.updating) {
-                const chunk = this.queue.shift();
-                this.sourceBuffer.appendBuffer(chunk);
-            }
-        });
-    }
-
-    async playChunk(audioBuffer) {
-        // For simplicity, we fallback to creating Blob and appending to audio element
-        const blob = new Blob([audioBuffer], { type: this.mimeType });
-        const url = URL.createObjectURL(blob);
-        
-        // Stop current playback before setting new source
-        if (this.isPlaying) {
-            this.audioEl.pause();
-            this.audioEl.currentTime = 0;
-        }
-        
-        this.audioEl.src = url;
-        
-        try {
-            await this.audioEl.play();
-            this.isPlaying = true;
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error('Error playing audio chunk:', error);
-            }
-            // AbortError is expected when play() is interrupted by a new load
-        }
-    }
-
-    stop() {
-        this.audioEl.pause();
-        this.audioEl.currentTime = 0;
-        this.isPlaying = false;
-        // Detach src to stop streaming
-        this.audioEl.src = '';
-    }
-}
-
-class PluginManagerClient {
-    constructor() {
-        this.plugins = [];
-    }
-
-    register(plugin) {
-        this.plugins.push(plugin);
-    }
-
-    emit(event, data) {
-        for (const plugin of this.plugins) {
-            const handler = plugin[event];
-            if (typeof handler === 'function') {
-                try { handler(data); } catch (e) { console.error('Plugin handler error:', e); }
-            }
-        }
-    }
-}
+import { MicrophoneStreamer } from './microphone.js';
+import { PlaybackController } from './playback.js';
+import { PluginManagerClient } from './plugins.js';
+import { SessionManager } from './session.js';
+import { UIManager } from './ui.js';
 
 class App {
     constructor() {
-        this.ws = null;
-        this.sessionId = null;
-        this.systemQuestion = null; // Przechowuje aktualny systemQuestion
-        this.wsUrl = null;
-
-        this.ui = this.setupUI();
+        this.session = new SessionManager();
+        this.ui = new UIManager();
         this.playback = new PlaybackController();
         this.plugins = new PluginManagerClient();
         
         // Setup mic streamer
         this.mic = new MicrophoneStreamer({
             wsUrl: null,
-            onAudioChunk: (pcm16) => this.sendAudio(pcm16),
+            onAudioChunk: (pcm16) => this.session.sendAudio(pcm16),
             onVadStart: () => this.onVadStart(),
             onVadStop: () => this.onVadStop(),
             vadThreshold: 0.02
@@ -358,209 +31,92 @@ class App {
             onTTSStop: () => console.log('[ClientPlugin] TTS stop'),
             onUserStartedSpeaking: () => console.log('[ClientPlugin] User speaking')
         });
+
+        // Setup UI event listeners
+        this.setupUIEventListeners();
     }
 
-    setupUI() {
-        const ui = {
-            connectionStatus: document.getElementById('connection-status'),
-            sessionStatus: document.getElementById('session-status'),
-            micStatus: document.getElementById('mic-status'),
-            ttsStatus: document.getElementById('tts-status'),
-            transcriptContainer: document.getElementById('transcript-container'),
-            startBtn: document.getElementById('start-btn'),
-            errorPanel: document.getElementById('error-panel'),
-            errorMessage: document.getElementById('error-message'),
-            dismissErrorBtn: document.getElementById('dismiss-error'),
-            // Elementy modala
-            modal: document.getElementById('voice-modal'),
-            closeModalBtn: document.getElementById('close-modal')
-        };
-    
-        // Event listener dla przycisku start
-        ui.startBtn.addEventListener('click', () => {
-            this.showModal();
-            this.start();
-        });
+    setupUIEventListeners() {
+        // Setup start button
+        this.ui.setupStartButton(() => this.start());
         
-        ui.dismissErrorBtn.addEventListener('click', () => this.hideError());
-        
-        // Event listenery dla modala
-        ui.closeModalBtn.addEventListener('click', () => {
-            this.hideModal();
-            this.stop();
-        });
-        
-        // Zamknij modal po kliknięciu w tło
-        ui.modal.addEventListener('click', (e) => {
-            if (e.target === ui.modal) {
-                this.hideModal();
-                this.stop();
-            }
-        });
-    
-        return ui;
-    }
-
-    // Dodaj te nowe metody do klasy App
-    showModal() {
-        this.ui.modal.classList.remove('hidden');
-    }
-
-    hideModal() {
-        this.ui.modal.classList.add('hidden');
+        // Listen for UI events
+        document.addEventListener('ui:stop-session', () => this.stop());
     }
 
     async init() {
         // Przywróć sessionId z localStorage jeśli istnieje
-        const savedSessionId = localStorage.getItem('sessionId');
-        if (savedSessionId) {
-            this.sessionId = savedSessionId;
-        }
+        this.session.restoreSession();
         
         this.playback.init();
         await this.mic.init();
-        this.ui.micStatus.textContent = 'Ready';
-        this.ui.micStatus.classList.remove('inactive');
-        this.ui.micStatus.classList.add('active');
+        this.ui.setMicrophoneReady();
         this.connectWs();
     }
 
     connectWs() {
-        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-        this.wsUrl = `${protocol}://${location.hostname}:3001`; // WS runs on separate port
-        this.ws = new WebSocket(this.wsUrl);
-
-        this.ws.onopen = () => {
-            this.setConnectionStatus(true);
-            this.ui.startBtn.disabled = false;
-        };
-
-        this.ws.onmessage = (event) => this.handleMessage(event);
-        this.ws.onerror = (err) => this.showError('WebSocket error: ' + err.message);
-        this.ws.onclose = () => {
-            this.setConnectionStatus(false);
-            this.ui.startBtn.disabled = true;
-            setTimeout(() => this.connectWs(), 2000);
-        };
-    }
-
-    setConnectionStatus(connected) {
-        this.ui.connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
-        this.ui.connectionStatus.classList.toggle('connected', connected);
-        this.ui.connectionStatus.classList.toggle('disconnected', !connected);
+        this.session.connectWebSocket(
+            // onOpen
+            () => {
+                this.ui.setConnectionStatus(true);
+            },
+            // onMessage
+            (event) => this.handleMessage(event),
+            // onError
+            (err) => this.ui.showError('WebSocket error: ' + err.message),
+            // onClose
+            () => {
+                this.ui.setConnectionStatus(false);
+                setTimeout(() => this.connectWs(), 2000);
+            }
+        );
     }
 
     async start() {
         try {
             // Pobierz dane startowe z backendu
-            const response = await fetch('http://localhost:8001/api/chat/start', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                credentials: 'include'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Backend error: ${response.status}`);
-            }
-            
-            const backendData = await response.json();
-            
-            // Zapisz sessionId i systemQuestion z backendu
-            this.sessionId = backendData.sessionId;
-            this.systemQuestion = backendData.message; // Pierwszy systemQuestion to message z /chat/start
-            localStorage.setItem('sessionId', this.sessionId);
+            const backendData = await this.session.startSession();
             
             // Uruchom sesję WebSocket z sessionId z backendu
-            this.ws.send(JSON.stringify({ 
-                type: 'start-session',
-                sessionId: this.sessionId 
-            }));
+            this.session.startWebSocketSession();
             this.mic.startStreaming();
-            this.ui.sessionStatus.textContent = 'Active';
-            this.ui.sessionStatus.classList.remove('inactive');
-            this.ui.sessionStatus.classList.add('active');
+            this.ui.setSessionActive(true);
             
             // Dodaj wiadomość powitalną do transkrypcji
-            this.addTranscript('assistant', backendData.message);
+            this.ui.addTranscript('assistant', backendData.message);
             
             // Wyślij wiadomość powitalną do TTS
-            this.ws.send(JSON.stringify({ 
-                type: 'tts-request', 
-                text: backendData.message,
-                sessionId: this.sessionId
-            }));
+            this.session.requestTTS(backendData.message);
             
         } catch (error) {
-            this.showError('Failed to start session: ' + error.message);
+            this.ui.showError(error.message);
         }
     }
 
     stop() {
         try {
-            this.ws.send(JSON.stringify({ type: 'stop-session' }));
+            this.session.stopWebSocketSession();
             this.mic.stopStreaming();
-            this.ui.sessionStatus.textContent = 'Inactive';
-            this.ui.sessionStatus.classList.remove('active');
-            this.ui.sessionStatus.classList.add('inactive');
-            this.addTranscript('system', 'Session stopped.');
+            this.ui.setSessionActive(false);
+            this.ui.addTranscript('system', 'Session stopped.');
             
             // Reset session data
-            this.sessionId = null;
-            this.systemQuestion = null;
-            localStorage.removeItem('sessionId');
+            this.session.resetSession();
         } catch (error) {
-            this.showError('Failed to stop session: ' + error.message);
+            this.ui.showError('Failed to stop session: ' + error.message);
         }
-    }
-
-    stopTts() {
-        this.ws.send(JSON.stringify({ type: 'user-started-speaking' }));
-    }
-
-    sendAudio(pcm16) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        const base64 = btoa(String.fromCharCode(...pcm16));
-        this.ws.send(JSON.stringify({ type: 'audio-data', audio: base64 }));
     }
 
     async handleUserAnswer(userText) {
         try {
             // Wyślij odpowiedź użytkownika do backendu
-            const response = await fetch('http://localhost:8001/api/chat/answer', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    sessionId: this.sessionId,
-                    answer: userText,
-                    systemQuestion: this.systemQuestion
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Backend error: ${response.status}`);
-            }
-            
-            const backendData = await response.json();
-            
-            // Aktualizuj systemQuestion nową wartością z question
-            this.systemQuestion = backendData.question;
+            const backendData = await this.session.sendUserAnswer(userText);
             
             // Dodaj odpowiedź asystenta do transkrypcji
-            this.addTranscript('assistant', backendData.question);
+            this.ui.addTranscript('assistant', backendData.question);
             
             // Wyślij question do TTS
-            this.ws.send(JSON.stringify({ 
-                type: 'tts-request', 
-                text: backendData.question,
-                sessionId: this.sessionId
-            }));
+            this.session.requestTTS(backendData.question);
             
             // Opcjonalnie: obsługa dodatkowych pól z odpowiedzi
             if (backendData.isCompleted) {
@@ -580,18 +136,18 @@ class App {
             }
             
         } catch (error) {
-            this.showError('Failed to send answer: ' + error.message);
+            this.ui.showError(error.message);
         }
     }
 
     onVadStart() {
         // Stop TTS immediately on user speech detection
-        this.ws.send(JSON.stringify({ type: 'user-started-speaking' }));
+        this.session.stopTTS();
         this.plugins.emit('onUserStartedSpeaking');
     }
 
     onVadStop() {
-        this.ws.send(JSON.stringify({ type: 'user-stopped-speaking' }));
+        this.session.userStoppedSpeaking();
     }
 
     handleMessage(event) {
@@ -600,33 +156,26 @@ class App {
             switch (message.type) {
                 case 'session-started':
                     // sessionId już ustawiony z backendu API - nie nadpisujemy
-                    this.ui.startBtn.disabled = true;
                     break;
                 case 'session-stopped':
-                    this.sessionId = null;
-                    this.systemQuestion = null;
-                    this.ui.startBtn.disabled = false;
+                    this.session.resetSession();
                     break;
                 case 'partial-transcript':
                     this.plugins.emit('onPartialTranscript', message.text);
-                    this.addTranscript('user', message.text, true);
+                    this.ui.addTranscript('user', message.text, true);
                     break;
                 case 'final-transcript':
                     this.plugins.emit('onTranscript', message.text);
-                    this.addTranscript('user', message.text, false);
+                    this.ui.addTranscript('user', message.text, false);
                     // Wyślij odpowiedź użytkownika do backendu
                     this.handleUserAnswer(message.text);
                     break;
                 case 'tts-start':
-                    this.ui.ttsStatus.textContent = 'Playing';
-                    this.ui.ttsStatus.classList.remove('inactive');
-                    this.ui.ttsStatus.classList.add('playing');
+                    this.ui.setTTSStatus('playing');
                     this.plugins.emit('onTTSStart');
                     break;
                 case 'tts-end':
-                    this.ui.ttsStatus.textContent = 'Inactive';
-                    this.ui.ttsStatus.classList.remove('playing');
-                    this.ui.ttsStatus.classList.add('inactive');
+                    this.ui.setTTSStatus('inactive');
                     this.plugins.emit('onTTSStop');
                     break;
                 case 'tts-chunk':
@@ -642,56 +191,21 @@ class App {
                             console.error('Error in TTS playback:', error);
                         }
                     });
-                    this.addTranscript('assistant', '[Playing audio chunk...]');
+                    this.ui.addTranscript('assistant', '[Playing audio chunk...]');
                     break;
                 case 'user-speaking':
                     if (message.speaking) {
-                        this.ui.ttsStatus.textContent = 'Interrupted';
-                        this.ui.ttsStatus.classList.remove('playing');
-                        this.ui.ttsStatus.classList.add('inactive');
+                        this.ui.setTTSStatus('interrupted');
                         this.playback.stop();
                     }
                     break;
                 case 'error':
-                    this.showError(`${message.type}: ${message.message}`);
+                    this.ui.showError(`${message.type}: ${message.message}`);
                     break;
             }
         } catch (error) {
             console.error('Error handling message:', error);
         }
-    }
-
-    addTranscript(speaker, text, isPartial = false) {
-        const item = document.createElement('div');
-        item.className = `transcript-item ${speaker} ${isPartial ? 'partial' : ''}`;
-        
-        const timestamp = new Date().toLocaleTimeString();
-        item.innerHTML = `
-            <span class="timestamp">${timestamp}</span>
-            <span class="speaker ${speaker}">${speaker.charAt(0).toUpperCase() + speaker.slice(1)}</span>
-            <span class="text">${text}</span>
-        `;
-        
-        if (isPartial) {
-            // Replace existing partial
-            const existing = this.ui.transcriptContainer.querySelector('.transcript-item.partial');
-            if (existing) {
-                this.ui.transcriptContainer.removeChild(existing);
-            }
-        }
-
-        this.ui.transcriptContainer.appendChild(item);
-        this.ui.transcriptContainer.scrollTop = this.ui.transcriptContainer.scrollHeight;
-    }
-
-    showError(message) {
-        this.ui.errorMessage.textContent = message;
-        this.ui.errorPanel.classList.remove('hidden');
-    }
-
-    hideError() {
-        this.ui.errorPanel.classList.add('hidden');
-        this.ui.errorMessage.textContent = '';
     }
 }
 
