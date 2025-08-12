@@ -53,7 +53,7 @@ class TtsClient extends EventEmitter {
         }
 
         return new Promise((resolve, reject) => {
-            const wsUrl = `${this.wsUrl}/${this.voiceId}/stream-input?model_id=eleven_turbo_v2`;
+            const wsUrl = `${this.wsUrl}/${this.voiceId}/stream-input?model_id=eleven_turbo_v2_5`;
             
             this.ws = new WebSocket(wsUrl, {
                 headers: {
@@ -70,7 +70,7 @@ class TtsClient extends EventEmitter {
                     text: ' ',
                     voice_settings: this.voiceSettings,
                     generation_config: {
-                        chunk_length_schedule: [120, 160, 250, 290]
+                        chunk_length_schedule: [50, 120, 160, 250, 290]
                     }
                 };
                 
@@ -127,28 +127,20 @@ class TtsClient extends EventEmitter {
         this.isSynthesizing = true;
         this.emit('ttsStart');
 
-        // Split text into smaller chunks for better streaming
-        const chunks = this.splitTextIntoChunks(text);
-        
-        for (const chunk of chunks) {
-            if (!this.isSynthesizing) break; // Stop if synthesis was cancelled
-            
-            const message = {
-                text: chunk + ' ',
-                try_trigger_generation: chunks.indexOf(chunk) === chunks.length - 1
-            };
-            
-            this.ws.send(JSON.stringify(message));
-            
-            // Small delay between chunks
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-
-        // Send EOS (End of Stream) message
-        const eosMessage = {
-            text: ''
+        // Send the complete text in one message for better quality
+        const textMessage = {
+            text: text
         };
-        this.ws.send(JSON.stringify(eosMessage));
+        
+        this.ws.send(JSON.stringify(textMessage));
+        
+        // Send final message with flush to ensure complete generation
+        const finalMessage = {
+            text: '',
+            flush: true
+        };
+        
+        this.ws.send(JSON.stringify(finalMessage));
     }
 
     splitTextIntoChunks(text, maxChunkLength = 100) {
