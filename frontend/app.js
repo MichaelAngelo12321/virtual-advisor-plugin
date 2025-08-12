@@ -367,19 +367,46 @@ class App {
             ttsStatus: document.getElementById('tts-status'),
             transcriptContainer: document.getElementById('transcript-container'),
             startBtn: document.getElementById('start-btn'),
-            stopBtn: document.getElementById('stop-btn'),
-            stopTtsBtn: document.getElementById('stop-tts-btn'),
             errorPanel: document.getElementById('error-panel'),
             errorMessage: document.getElementById('error-message'),
-            dismissErrorBtn: document.getElementById('dismiss-error')
+            dismissErrorBtn: document.getElementById('dismiss-error'),
+            // Elementy modala
+            modal: document.getElementById('voice-modal'),
+            closeModalBtn: document.getElementById('close-modal')
         };
-
-        ui.startBtn.addEventListener('click', () => this.start());
-        ui.stopBtn.addEventListener('click', () => this.stop());
-        ui.stopTtsBtn.addEventListener('click', () => this.stopTts());
+    
+        // Event listener dla przycisku start
+        ui.startBtn.addEventListener('click', () => {
+            this.showModal();
+            this.start();
+        });
+        
         ui.dismissErrorBtn.addEventListener('click', () => this.hideError());
-
+        
+        // Event listenery dla modala
+        ui.closeModalBtn.addEventListener('click', () => {
+            this.hideModal();
+            this.stop();
+        });
+        
+        // Zamknij modal po kliknięciu w tło
+        ui.modal.addEventListener('click', (e) => {
+            if (e.target === ui.modal) {
+                this.hideModal();
+                this.stop();
+            }
+        });
+    
         return ui;
+    }
+
+    // Dodaj te nowe metody do klasy App
+    showModal() {
+        this.ui.modal.classList.remove('hidden');
+    }
+
+    hideModal() {
+        this.ui.modal.classList.add('hidden');
     }
 
     async init() {
@@ -406,8 +433,6 @@ class App {
         this.ws.onclose = () => {
             this.setConnectionStatus(false);
             this.ui.startBtn.disabled = true;
-            this.ui.stopBtn.disabled = true;
-            this.ui.stopTtsBtn.disabled = true;
             setTimeout(() => this.connectWs(), 2000);
         };
     }
@@ -425,7 +450,6 @@ class App {
             this.ui.sessionStatus.textContent = 'Active';
             this.ui.sessionStatus.classList.remove('inactive');
             this.ui.sessionStatus.classList.add('active');
-            this.ui.stopBtn.disabled = false;
             this.addTranscript('system', 'Session started. Speak to the assistant.');
         } catch (error) {
             this.showError('Failed to start session: ' + error.message);
@@ -439,8 +463,6 @@ class App {
             this.ui.sessionStatus.textContent = 'Inactive';
             this.ui.sessionStatus.classList.remove('active');
             this.ui.sessionStatus.classList.add('inactive');
-            this.ui.stopBtn.disabled = true;
-            this.ui.stopTtsBtn.disabled = true;
             this.addTranscript('system', 'Session stopped.');
         } catch (error) {
             this.showError('Failed to stop session: ' + error.message);
@@ -474,12 +496,10 @@ class App {
                 case 'session-started':
                     this.sessionId = message.sessionId;
                     this.ui.startBtn.disabled = true;
-                    this.ui.stopBtn.disabled = false;
                     break;
                 case 'session-stopped':
                     this.sessionId = null;
                     this.ui.startBtn.disabled = false;
-                    this.ui.stopBtn.disabled = true;
                     break;
                 case 'partial-transcript':
                     this.plugins.emit('onPartialTranscript', message.text);
@@ -493,14 +513,12 @@ class App {
                     this.ui.ttsStatus.textContent = 'Playing';
                     this.ui.ttsStatus.classList.remove('inactive');
                     this.ui.ttsStatus.classList.add('playing');
-                    this.ui.stopTtsBtn.disabled = false;
                     this.plugins.emit('onTTSStart');
                     break;
                 case 'tts-end':
                     this.ui.ttsStatus.textContent = 'Inactive';
                     this.ui.ttsStatus.classList.remove('playing');
                     this.ui.ttsStatus.classList.add('inactive');
-                    this.ui.stopTtsBtn.disabled = true;
                     this.plugins.emit('onTTSStop');
                     break;
                 case 'tts-chunk':
