@@ -333,6 +333,7 @@ class App {
     constructor() {
         this.ws = null;
         this.sessionId = null;
+        this.systemQuestion = null; // Przechowuje aktualny systemQuestion
         this.wsUrl = null;
 
         this.ui = this.setupUI();
@@ -457,7 +458,8 @@ class App {
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
-                }
+                },
+                credentials: 'include'
             });
             
             if (!response.ok) {
@@ -466,8 +468,9 @@ class App {
             
             const backendData = await response.json();
             
-            // Zapisz sessionId z backendu
+            // Zapisz sessionId i systemQuestion z backendu
             this.sessionId = backendData.sessionId;
+            this.systemQuestion = backendData.message; // Pierwszy systemQuestion to message z /chat/start
             localStorage.setItem('sessionId', this.sessionId);
             
             // Uruchom sesję WebSocket z sessionId z backendu
@@ -503,6 +506,11 @@ class App {
             this.ui.sessionStatus.classList.remove('active');
             this.ui.sessionStatus.classList.add('inactive');
             this.addTranscript('system', 'Session stopped.');
+            
+            // Reset session data
+            this.sessionId = null;
+            this.systemQuestion = null;
+            localStorage.removeItem('sessionId');
         } catch (error) {
             this.showError('Failed to stop session: ' + error.message);
         }
@@ -516,6 +524,64 @@ class App {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         const base64 = btoa(String.fromCharCode(...pcm16));
         this.ws.send(JSON.stringify({ type: 'audio-data', audio: base64 }));
+    }
+
+    async handleUserAnswer(userText) {
+        try {
+            // Wyślij odpowiedź użytkownika do backendu
+            const response = await fetch('http://localhost:8001/api/chat/answer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    sessionId: this.sessionId,
+                    answer: userText,
+                    systemQuestion: this.systemQuestion
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Backend error: ${response.status}`);
+            }
+            
+            const backendData = await response.json();
+            
+            // Aktualizuj systemQuestion nową wartością z question
+            this.systemQuestion = backendData.question;
+            
+            // Dodaj odpowiedź asystenta do transkrypcji
+            this.addTranscript('assistant', backendData.question);
+            
+            // Wyślij question do TTS
+            this.ws.send(JSON.stringify({ 
+                type: 'tts-request', 
+                text: backendData.question,
+                sessionId: this.sessionId
+            }));
+            
+            // Opcjonalnie: obsługa dodatkowych pól z odpowiedzi
+            if (backendData.isCompleted) {
+                console.log('Conversation completed');
+            }
+            
+            if (backendData.shouldEndConversation) {
+                console.log('Should end conversation');
+            }
+            
+            if (backendData.currentState) {
+                console.log('Current state:', backendData.currentState);
+            }
+            
+            if (backendData.availableActions) {
+                console.log('Available actions:', backendData.availableActions);
+            }
+            
+        } catch (error) {
+            this.showError('Failed to send answer: ' + error.message);
+        }
     }
 
     onVadStart() {
@@ -538,6 +604,7 @@ class App {
                     break;
                 case 'session-stopped':
                     this.sessionId = null;
+                    this.systemQuestion = null;
                     this.ui.startBtn.disabled = false;
                     break;
                 case 'partial-transcript':
@@ -547,6 +614,8 @@ class App {
                 case 'final-transcript':
                     this.plugins.emit('onTranscript', message.text);
                     this.addTranscript('user', message.text, false);
+                    // Wyślij odpowiedź użytkownika do backendu
+                    this.handleUserAnswer(message.text);
                     break;
                 case 'tts-start':
                     this.ui.ttsStatus.textContent = 'Playing';

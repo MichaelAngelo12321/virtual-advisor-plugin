@@ -110,8 +110,8 @@ class VoiceSession {
     handleFinalTranscript(transcript) {
         this.sendToClient('final-transcript', { text: transcript });
         
-        // Process the transcript (this would typically generate a response)
-        this.processUserInput(transcript);
+        // Transcript processing is now handled by frontend via external API
+        // No automatic response generation here
     }
 
     handleUserStartedSpeaking() {
@@ -121,14 +121,9 @@ class VoiceSession {
     }
 
     async processUserInput(text) {
-        // Simple echo response for demo - replace with your AI/logic
-        const response = "Cześć co u Ciebie słychać miło mi Cię poznać jestem twoim Fanem";
-        
-        try {
-            await this.generateTtsResponse(response);
-        } catch (error) {
-            console.error('Error generating TTS response:', error);
-        }
+        // This method is no longer used for automatic response generation
+        // Responses are now handled via external API calls from frontend
+        console.log(`User input processed: ${text}`);
     }
 
     async generateTtsResponse(text) {
