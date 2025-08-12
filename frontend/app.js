@@ -153,6 +153,15 @@ class App {
             
             if (backendData.currentState) {
                 console.log('Current state:', backendData.currentState);
+                
+                // Automatyczne wyszukiwanie ofert gdy currentState=offer_search i isCompleted=true
+                if (backendData.currentState === 'offer_search' && backendData.isCompleted === true) {
+                    console.log('Auto-triggering offer search');
+                    // Automatycznie wyślij zapytanie o wyszukiwanie ofert
+                    setTimeout(() => {
+                        this.handleUserAnswer('Dobrze czy na podstawie podanych danych kredytowych jesteś w stanie znaleźć mi jakieś oferty');
+                    }, 1000); // Krótkie opóźnienie dla lepszego UX
+                }
             }
             
             if (backendData.availableActions) {
