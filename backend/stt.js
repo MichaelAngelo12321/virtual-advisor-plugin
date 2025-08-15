@@ -20,20 +20,26 @@ class SttClient extends EventEmitter {
         
         this.request = {
             config: {
-                encoding: 'LINEAR16', // More reliable format
+                encoding: 'LINEAR16',
                 sampleRateHertz: this.sampleRate,
                 languageCode: this.languageCode,
                 enableAutomaticPunctuation: true,
                 enableWordTimeOffsets: false,
-                model: 'latest_long', // Best for conversations
+                model: 'latest_long',
                 useEnhanced: true,
                 maxAlternatives: 1,
+                // Dodaj Speaker Diarization
+                diarizationConfig: {
+                    enableSpeakerDiarization: true,
+                    minSpeakerCount: 1,
+                    maxSpeakerCount: 2 // Ty + ewentualnie inne osoby
+                },
                 speechContexts: [{
-                    phrases: ['virtual advisor', 'asystent', 'pomoc'], // Context phrases
+                    phrases: ['virtual advisor', 'asystent', 'pomoc'],
                     boost: 10.0
                 }]
             },
-            interimResults: true, // Critical for interruption detection
+            interimResults: true,
             singleUtterance: false,
         };
     }

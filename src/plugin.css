@@ -1,0 +1,40 @@
+/* Import głównych stylów z frontend */
+@import '../frontend/styles.css';
+
+/* Dodatkowe style specyficzne dla wtyczki */
+.virtual-advisor-plugin {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    position: relative;
+    z-index: 1000;
+}
+
+/* Zapewnienie, że wtyczka nie koliduje z stylami strony hosta */
+.virtual-advisor-plugin * {
+    box-sizing: border-box;
+}
+
+/* Responsywność dla różnych rozmiarów ekranu */
+@media (max-width: 768px) {
+    .virtual-advisor-plugin .modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+    
+    .virtual-advisor-plugin .offers-modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+}
+
+/* Zapewnienie wysokiego z-index dla modali */
+.virtual-advisor-plugin .modal,
+.virtual-advisor-plugin .offers-modal {
+    z-index: 10000;
+}
+
+/* Style dla kontenera wtyczki */
+#virtual-advisor-container {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+}

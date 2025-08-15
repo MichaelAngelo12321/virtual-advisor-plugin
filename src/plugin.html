@@ -1,0 +1,99 @@
+<!-- Virtual Advisor Plugin HTML Template -->
+<div class="virtual-advisor-plugin">
+    <!-- Main headphone icon -->
+    <div class="headphone-container">
+        <button id="start-btn" class="headphone-btn" disabled>
+            <svg class="headphone-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h0c1.66 0 3-1.34 3-3v-4c0-1.66-1.34-3-3-3H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-1c-1.66 0-3 1.34-3 3v4c0 1.66 1.34 3 3 3h0c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Modal for voice session -->
+    <div id="voice-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎤 Virtual Advisor</h2>
+                <button id="close-modal" class="close-btn">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Status Display -->
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">Connection:</span>
+                        <span id="connection-status" class="status-value disconnected">Disconnected</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Session:</span>
+                        <span id="session-status" class="status-value inactive">Inactive</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Microphone:</span>
+                        <span id="mic-status" class="status-value inactive">Inactive</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">TTS:</span>
+                        <span id="tts-status" class="status-value inactive">Inactive</span>
+                    </div>
+                </div>
+
+                <!-- Voice Activity Visualization -->
+                <div class="voice-visualizer">
+                    <canvas id="voice-canvas" width="300" height="100"></canvas>
+                    <div class="volume-indicator">
+                        <div id="volume-bar" class="volume-bar"></div>
+                    </div>
+                </div>
+
+                <!-- Transcript Display -->
+                <div class="transcript-panel">
+                    <h3>Conversation Transcript</h3>
+                    <div id="transcript-container" class="transcript-container">
+                        <div class="transcript-item system">
+                            <span class="timestamp">00:00:00</span>
+                            <span class="speaker">System</span>
+                            <span class="text">Welcome! Voice session is starting...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Form for Offers -->
+                <div id="email-form-panel" class="email-form-panel hidden">
+                    <h3>📧 Wyślij oferty na email</h3>
+                    <div class="email-form">
+                        <input type="email" id="email-input" placeholder="Wprowadź adres email" required>
+                        <button id="send-email-btn" class="btn btn-primary">Wyślij oferty</button>
+                    </div>
+                    <div id="email-status" class="email-status hidden"></div>
+                </div>
+
+                <!-- Error Display -->
+                <div id="error-panel" class="error-panel hidden">
+                    <h4>⚠️ Error</h4>
+                    <div id="error-message"></div>
+                    <button id="dismiss-error" class="btn btn-small">Dismiss</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal ofert kredytowych (domyślnie ukryty) -->
+    <div id="offers-modal" class="offers-modal" style="display: none;">
+        <div class="offers-modal-content">
+            <div class="offers-header">
+                <div>
+                    <h4 class="offers-title">Znalezione oferty kredytowe (<span id="offers-count">0</span>)</h4>
+                    <p class="offers-subtitle">Poniżej przedstawiamy najlepsze oferty dopasowane do Twoich potrzeb:</p>
+                </div>
+                <button class="close-button" id="close-offers-modal">✕</button>
+            </div>
+            <div id="offers-list" class="offers-list">
+                <!-- Oferty będą wstawione tutaj przez JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio element for TTS playback -->
+    <audio id="tts-audio" preload="auto"></audio>
+</div>

@@ -1,11 +1,14 @@
 // Session Manager Module - Backend communication and session handling
 
 export class SessionManager {
-    constructor() {
+    constructor(serverUrl = null, apiUrl = null) {
         this.sessionId = null;
         this.systemQuestion = null;
         this.ws = null;
         this.wsUrl = null;
+        // Konfiguracja URL-ów - można przekazać z zewnątrz lub użyć domyślnych
+        this.serverUrl = serverUrl || 'ws://localhost:3001';
+        this.apiBaseUrl = apiUrl ? `${apiUrl}/api` : 'http://localhost:8001/api';
     }
 
     // Przywróć sessionId z localStorage jeśli istnieje
@@ -19,7 +22,7 @@ export class SessionManager {
     // Pobierz dane startowe z backendu
     async startSession() {
         try {
-            const response = await fetch('http://localhost:8001/api/chat/start', {
+            const response = await fetch(`${this.apiBaseUrl}/chat/start`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -48,7 +51,7 @@ export class SessionManager {
     // Wyślij odpowiedź użytkownika do backendu
     async sendUserAnswer(userText) {
         try {
-            const response = await fetch('http://localhost:8001/api/chat/answer', {
+            const response = await fetch(`${this.apiBaseUrl}/chat/answer`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -86,8 +89,14 @@ export class SessionManager {
 
     // WebSocket connection management
     connectWebSocket(onOpen, onMessage, onError, onClose) {
-        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-        this.wsUrl = `${protocol}://${location.hostname}:3001`;
+        // Użyj skonfigurowanego serverUrl lub automatycznie wykryj
+        if (this.serverUrl.startsWith('ws://') || this.serverUrl.startsWith('wss://')) {
+            this.wsUrl = this.serverUrl;
+        } else {
+            const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+            this.wsUrl = `${protocol}://${location.hostname}:3001`;
+        }
+        
         this.ws = new WebSocket(this.wsUrl);
 
         this.ws.onopen = onOpen;
@@ -145,7 +154,7 @@ export class SessionManager {
     // Wyślij oferty na email
     async sendOffersEmail(email, message) {
         try {
-            const response = await fetch('http://localhost:8001/api/chat/send-offers-email', {
+            const response = await fetch(`${this.apiBaseUrl}/chat/send-offers-email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -178,7 +187,7 @@ export class SessionManager {
     // Pobierz oferty kredytowe
     async getMortgageOffers() {
         try {
-            const response = await fetch(`http://localhost:8001/api/chat/mortgage-offers/${this.sessionId}`, {
+            const response = await fetch(`${this.apiBaseUrl}/chat/mortgage-offers/${this.sessionId}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'

@@ -20,7 +20,7 @@ class App {
             onAudioChunk: (pcm16) => this.session.sendAudio(pcm16),
             onVadStart: () => this.onVadStart(),
             onVadStop: () => this.onVadStop(),
-            vadThreshold: 0.02
+            vadThreshold: 0.05 // Zwiększ z 0.02 do 0.05 lub wyżej
         });
         
         // Register example plugin
